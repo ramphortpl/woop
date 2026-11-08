@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import BackgroundTasks
+import UserNotifications
 
 /// Persistent user settings (UserDefaults, JSON).
 struct AppSettings: Codable, Equatable {
@@ -88,6 +89,7 @@ final class AppState: ObservableObject {
         if settings.onboardingDone && !settings.demoMode {
             strap.start()
             strap.setBackgroundLive(settings.continuousHR)
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.recompute(daysBack: 1) }
@@ -228,6 +230,7 @@ final class AppState: ObservableObject {
                 self.computedDays = result
                 self.rebuildMerged()
                 self.computing = false
+                self.notifyRecoveryIfNeeded()
                 completion?()
             }
         }
@@ -238,6 +241,31 @@ final class AppState: ObservableObject {
         computedDays = [:]
         rebuildMerged()
         recompute(daysBack: 45)
+    }
+
+    // MARK: Notifications
+
+    /// Once per day, when this morning's recovery first becomes available, post it (like WHOOP).
+    func notifyRecoveryIfNeeded() {
+        guard !settings.demoMode, let d = days[today], let r = d.recovery, let s = d.sleep else { return }
+        let now = Int(Date().timeIntervalSince1970)
+        guard now - s.end < 8 * 3600 else { return }
+        let key = "woop.notified.recovery"
+        guard UserDefaults.standard.string(forKey: key) != today else { return }
+        UserDefaults.standard.set(today, forKey: key)
+        let content = UNMutableNotificationContent()
+        let zone: String
+        switch Recovery.zone(r) {
+        case .green: zone = "🟢 prêt pour un effort important"
+        case .yellow: zone = "🟡 un effort modéré est adapté"
+        case .red: zone = "🔴 privilégie la récupération"
+        }
+        content.title = "Récupération : \(Int(r)) %"
+        var body = zone
+        if let p = d.sleepPerformance { body += " · Sommeil \(Int(p)) %" }
+        content.body = body
+        content.sound = .default
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "recovery-\(today)", content: content, trigger: nil))
     }
 
     // MARK: Background refresh

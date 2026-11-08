@@ -29,6 +29,20 @@ La première synchronisation récupère tout l'historique stocké dans le bracel
 compte quelques minutes. Ensuite Woop resynchronise à l'ouverture et toutes les 15 minutes quand il est
 connecté. La **récupération** apparaît après 4 nuits de calibrage, comme sur WHOOP.
 
+### Récupérer ton historique WHOOP (recommandé)
+
+Dans l'app WHOOP : *Plus › Paramètres › Exporter les données*. Tu reçois un e-mail avec un `.zip` :
+enregistre-le dans Fichiers, puis dans Woop *Plus › Données et stockage › Importer depuis WHOOP*
+(le `.zip` directement, ou les fichiers CSV). Les jours passés affichent alors **exactement les scores
+WHOOP** (récupération, effort, sommeil, entraînements) et tes moyennes de référence sont calibrées
+immédiatement, sans attendre 4 nuits. Les exports en français et en anglais sont reconnus.
+
+### Arrière-plan
+
+iOS met l'app en veille : Woop resynchronise quand tu l'ouvres, quand iOS lui accorde un rafraîchissement
+en arrière-plan, et le bracelet garde tout en mémoire en attendant. L'option *Fréquence cardiaque en
+continu* (Plus › Mon bracelet) garde le flux en direct même app fermée, au prix de la batterie du bracelet.
+
 Pas encore de bracelet sous la main ? *Plus › Mode démo* affiche l'interface avec des données simulées
 (jamais mélangées à tes vraies données).
 

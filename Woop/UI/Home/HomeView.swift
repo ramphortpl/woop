@@ -17,6 +17,7 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             ScreenBackground()
+            ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TopBar()
@@ -50,7 +51,7 @@ struct HomeView: View {
                         if let live = app.liveSession { LiveSessionBanner(session: live) }
                         activitiesCard
                         if app.isToday { tonightCard }
-                        dashboard
+                        dashboard.id("dashboard")
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
@@ -60,6 +61,12 @@ struct HomeView: View {
             .refreshable {
                 strap.syncNow()
                 app.recompute(daysBack: 2)
+            }
+            .onAppear {
+                if app.launchScreen == "dashboard" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { proxy.scrollTo("dashboard", anchor: .top) }
+                }
+            }
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -126,7 +133,7 @@ struct HomeView: View {
     private var activitiesCard: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Activités du jour").wLabel(13.5)
+                Text("Activités du jour").wLabel(12.5, tracking: 1.5)
                 Spacer()
                 NavigationLink(value: HomeRoute.activities) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 18)).foregroundColor(Theme.textSecondary)
@@ -195,7 +202,7 @@ struct HomeView: View {
         Button { showPlanner = true } label: {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("Sommeil de ce soir").wLabel(13.5)
+                    Text("Sommeil de ce soir").wLabel(12.5, tracking: 1.5)
                     Spacer()
                     Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.textSecondary)
                 }

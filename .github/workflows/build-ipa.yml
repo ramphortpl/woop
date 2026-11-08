@@ -127,7 +127,7 @@ jobs:
           APP=$(find build/sim/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
           xcrun simctl install "$UDID" "$APP"
           mkdir -p shots
-          for S in home customize sleep recovery strain health community more coach device; do
+          for S in home dashboard customize sleep recovery strain health community more coach device; do
             xcrun simctl launch "$UDID" com.ramphortpl.woop -woopDemo -woopScreen "$S" > /dev/null
             sleep 22
             xcrun simctl io "$UDID" screenshot "shots/$S.png"

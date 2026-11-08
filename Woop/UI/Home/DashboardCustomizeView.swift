@@ -22,7 +22,7 @@ struct DashboardCustomizeView: View {
                         .font(.system(size: 25, weight: .regular)).foregroundColor(.white)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 22, leading: 20, bottom: 14, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 34, leading: 20, bottom: 16, trailing: 20))
                         .moveDisabled(true)
 
                     ForEach(selected) { m in
@@ -92,9 +92,9 @@ struct DashboardCustomizeView: View {
     }
 
     private func row(_ m: DashboardMetric, trailing: AnyView?) -> some View {
-        HStack(spacing: 16) {
-            Image(systemName: m.icon).font(.system(size: 18)).foregroundColor(Theme.textSecondary).frame(width: 26)
-            Text(m.title).wLabel(12.5, weight: .bold, tracking: 1.5).lineLimit(2).minimumScaleFactor(0.75)
+        HStack(spacing: 12) {
+            Image(systemName: m.icon).font(.system(size: 18)).foregroundColor(Theme.textSecondary).frame(width: 24)
+            Text(m.title).wLabel(12, weight: .bold, tracking: 1.25).lineLimit(2).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             if m.isChart {
                 Image(systemName: "chart.bar").font(.system(size: 22)).foregroundColor(Theme.textSecondary)
@@ -109,6 +109,6 @@ struct DashboardCustomizeView: View {
                 .padding(.horizontal, 16)
         )
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 6, leading: 30, bottom: 6, trailing: 26))
+        .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 20))
     }
 }
