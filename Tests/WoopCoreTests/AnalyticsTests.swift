@@ -175,4 +175,29 @@ final class LiveMixTests: XCTestCase {
         XCTAssertTrue(m.sleep?.bandDetected ?? false)
         XCTAssertNotNil(m.strain)
     }
+
+    func testStrainInverseRoundTrip() {
+        for strain in [0.5, 4.0, 9.3, 13.5, 17.2, 20.5] {
+            let net = Strain.netTrimp(forStrain: strain)
+            XCTAssertEqual(Strain.fromNetTrimp(net), strain, accuracy: 0.0001)
+        }
+        // Adding a session's load can only raise the day's strain, and never above 21.
+        let day = Strain.netTrimp(forStrain: 7.1)
+        XCTAssertGreaterThan(Strain.fromNetTrimp(day + 40), 7.1)
+        XCTAssertLessThanOrEqual(Strain.fromNetTrimp(day + 10_000), 21)
+    }
+
+    func testOptimalStrainTarget() {
+        XCTAssertNil(StrainTarget.optimal(for: nil))
+        XCTAssertEqual(StrainTarget.optimal(for: 45)!, 10.5, accuracy: 0.05)
+        XCTAssertEqual(StrainTarget.optimal(for: 34)!, 9.0, accuracy: 0.05)
+        XCTAssertEqual(StrainTarget.optimal(for: 10)!, 5.5, accuracy: 0.2)
+        XCTAssertTrue(StrainTarget.forRecovery(90)!.contains(StrainTarget.optimal(for: 90)!))
+    }
+
+    func testTimerFormat() {
+        XCTAssertEqual(Fmt.timer(0), "00:00")
+        XCTAssertEqual(Fmt.timer(23 * 60 + 45), "23:45")
+        XCTAssertEqual(Fmt.timer(3600 + 23 * 60 + 5), "1:23:05")
+    }
 }

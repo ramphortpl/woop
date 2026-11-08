@@ -7,7 +7,7 @@ options:
   developmentLanguage: fr
 settings:
   base:
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
@@ -41,7 +41,7 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIBackgroundModes: [bluetooth-central, fetch]
+        UIBackgroundModes: [bluetooth-central, fetch, location]
         # "Partager › Woop" / "Ouvrir avec Woop" for the WHOOP export (.zip / .csv), and a
         # Woop folder in Fichiers (Sur mon iPhone) where an export can be dropped.
         CFBundleDocumentTypes:
@@ -56,8 +56,17 @@ targets:
           - BarlowSemiCondensed-Medium.ttf
           - BarlowSemiCondensed-SemiBold.ttf
           - BarlowSemiCondensed-Bold.ttf
+          - Montserrat-Medium.ttf
+          - Montserrat-SemiBold.ttf
+          - Montserrat-Bold.ttf
+          - Figtree-Regular.ttf
+          - Figtree-Medium.ttf
+          - Figtree-SemiBold.ttf
+          - Figtree-Bold.ttf
         NSBluetoothAlwaysUsageDescription: "Woop se connecte directement à ton bracelet WHOOP en Bluetooth pour lire ta fréquence cardiaque, tes intervalles R-R, ta batterie et tes données de capteurs. Tout reste sur ton iPhone."
         NSBluetoothPeripheralUsageDescription: "Woop se connecte à ton bracelet WHOOP en Bluetooth."
+        NSLocationWhenInUseUsageDescription: "Woop affiche ta position sur la carte et trace ton itinéraire pendant une activité (Suivi d'itinéraire). Le parcours reste sur ton iPhone."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Woop continue de tracer ton itinéraire quand l'écran est verrouillé pendant une activité. Le parcours reste sur ton iPhone."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ramphortpl.woop

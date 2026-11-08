@@ -17,6 +17,13 @@ struct AppSettings: Codable, Equatable {
     var stepCalibration = 1.0
     var rawRetentionDays = 120
     var notify = NotifyPrefs()
+    /// Statistics shown on the Sommeil / Récupération / Effort screens ("MODIFIER").
+    var sleepStats: [DashboardMetric] = DashboardMetric.sleepDefaults
+    var recoveryStats: [DashboardMetric] = DashboardMetric.recoveryDefaults
+    var strainStats: [DashboardMetric] = DashboardMetric.strainDefaults
+    /// "Suivi d'itinéraire" and "Objectif d'effort" on the start-activity screen.
+    var routeTracking = true
+    var strainTargetOn = true
 }
 
 extension AppSettings {
@@ -36,6 +43,11 @@ extension AppSettings {
         stepCalibration = (try? c.decodeIfPresent(Double.self, forKey: .stepCalibration)) ?? d.stepCalibration
         rawRetentionDays = (try? c.decodeIfPresent(Int.self, forKey: .rawRetentionDays)) ?? d.rawRetentionDays
         notify = (try? c.decodeIfPresent(NotifyPrefs.self, forKey: .notify)) ?? d.notify
+        sleepStats = (try? c.decodeIfPresent([DashboardMetric].self, forKey: .sleepStats)) ?? d.sleepStats
+        recoveryStats = (try? c.decodeIfPresent([DashboardMetric].self, forKey: .recoveryStats)) ?? d.recoveryStats
+        strainStats = (try? c.decodeIfPresent([DashboardMetric].self, forKey: .strainStats)) ?? d.strainStats
+        routeTracking = (try? c.decodeIfPresent(Bool.self, forKey: .routeTracking)) ?? d.routeTracking
+        strainTargetOn = (try? c.decodeIfPresent(Bool.self, forKey: .strainTargetOn)) ?? d.strainTargetOn
     }
 }
 
@@ -54,7 +66,9 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     @Published var settings: AppSettings { didSet { saveSettings() } }
-    @Published private(set) var days: [String: DayMetrics] = [:]
+    @Published private(set) var days: [String: DayMetrics] = [:] { didSet { sortedKeys = days.keys.sorted() } }
+    /// `days` keys in date order (history lookups by binary search instead of sorting each time).
+    private(set) var sortedKeys: [String] = []
     @Published var selectedDate: String = DayKey.today()
     @Published private(set) var computing = false
     @Published private(set) var userActivities: [ActivityRecord] = []
@@ -70,7 +84,12 @@ final class AppState: ObservableObject {
 
     let strap = StrapManager.shared
     private let analyticsQueue = DispatchQueue(label: "woop.analytics", qos: .utility)
-    private var demoSamples: [HistorySample] = []
+    private(set) var demoSamples: [HistorySample] = []
+    /// Bumped whenever the merged days change (invalidates chart caches).
+    @Published private(set) var dataVersion = 0
+    /// Per-minute heart-rate ranges already loaded for charts (see AppState+Charts).
+    var hrCache: [String: [HRPoint]] = [:]
+    var hrCacheOrder: [String] = []
     /// Days computed on the phone from strap data.
     private var computedDays: [String: DayMetrics] = [:]
     /// Days imported from the official WHOOP export (WHOOP's own scores).
@@ -152,7 +171,7 @@ final class AppState: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.recompute(daysBack: 1) }
         }
-        if liveSession != nil { strap.setLiveWanted(true) }
+        resumeLiveSessionIfNeeded()
     }
 
     private func saveSettings() {
@@ -171,7 +190,12 @@ final class AppState: ObservableObject {
 
     /// Days ascending, up to and including `key`, at most `count`.
     func history(upTo key: String, count: Int) -> [DayMetrics] {
-        days.values.filter { $0.date <= key }.sorted { $0.date < $1.date }.suffix(count).map { $0 }
+        var lo = 0, hi = sortedKeys.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if sortedKeys[mid] <= key { lo = mid + 1 } else { hi = mid }
+        }
+        return sortedKeys[max(0, lo - count)..<lo].compactMap { days[$0] }
     }
 
     func loadStored() {
@@ -188,7 +212,11 @@ final class AppState: ObservableObject {
 
     /// Publish computed days with WHOOP-imported scores layered on top.
     func rebuildMerged() {
-        days = Self.merge(computedDays, importedDays)
+        let merged = Self.merge(computedDays, importedDays)
+        // Publishing an identical dictionary would redraw every screen for nothing.
+        guard merged != days else { return }
+        days = merged
+        dataVersion &+= 1
     }
 
     nonisolated static func merge(_ computed: [String: DayMetrics], _ imported: [String: DayMetrics]) -> [String: DayMetrics] {
@@ -562,6 +590,14 @@ final class AppState: ObservableObject {
         liveSession = s
         persistLive()
         strap.setLiveWanted(true)
+        LiveWorkout.shared.begin(s, day: days[today], profile: settings.profile, routeTracking: settings.routeTracking)
+    }
+
+    func changeLiveSport(_ sport: String) {
+        guard var s = liveSession else { return }
+        s.sport = sport
+        liveSession = s
+        persistLive()
     }
 
     func endLiveSession(save: Bool) {
@@ -569,10 +605,21 @@ final class AppState: ObservableObject {
         liveSession = nil
         persistLive()
         strap.setLiveWanted(false)
+        let gps = LiveWorkout.shared.finish()
         let end = Int(Date().timeIntervalSince1970)
         if save, end - s.start >= 60 {
-            addActivity(ActivityRecord(id: "live-\(s.start)", sport: s.sport, start: s.start, end: end, source: .live))
+            var a = ActivityRecord(id: "live-\(s.start)", sport: s.sport, start: s.start, end: end, source: .live)
+            a.route = gps.route
+            a.distanceKm = gps.distanceKm
+            addActivity(a)
         }
+    }
+
+    /// After a relaunch during an activity: resume the live figures.
+    func resumeLiveSessionIfNeeded() {
+        guard let s = liveSession else { return }
+        strap.setLiveWanted(true)
+        LiveWorkout.shared.begin(s, day: days[today], profile: settings.profile, routeTracking: settings.routeTracking)
     }
 
     private func persistLive() {

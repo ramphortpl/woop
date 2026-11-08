@@ -26,6 +26,8 @@ Les tests utilisent quelques trames réelles publiées dans la suite de tests d'
 ## Police
 
 Barlow Semi Condensed — SIL Open Font License 1.1 (`Woop/Resources/Fonts/OFL-BarlowSemiCondensed.txt`).
+Montserrat — SIL Open Font License 1.1 (`Woop/Resources/Fonts/OFL-Montserrat.txt`), sous-ensemble latin.
+Figtree — SIL Open Font License 1.1 (`Woop/Resources/Fonts/OFL-Figtree.txt`), sous-ensemble latin.
 
 ---
 

@@ -50,14 +50,35 @@ struct StrapLogLine: Identifiable {
 /// READY → history drain (GET_DATA_RANGE + SEND_HISTORICAL_DATA) with commit-before-ACK.
 ///
 /// All mutable state lives on `queue`; published values are mirrored to the main thread.
+/// Realtime heart rate from the strap (about once per second while streaming).
+final class LiveHeartRate: ObservableObject {
+    @Published fileprivate(set) var bpm: Int?
+    /// When the last beat value arrived (not published: it changes every second).
+    fileprivate(set) var date: Date?
+
+    fileprivate func set(_ v: Int?, at d: Date? = nil) {
+        date = d
+        if bpm != v { bpm = v }
+    }
+}
+
+/// History transfer progress (updated many times per second during a sync).
+final class SyncProgress: ObservableObject {
+    @Published fileprivate(set) var seconds = 0
+    @Published fileprivate(set) var newest: Date?
+}
+
+/// Bluetooth journal shown in Plus › Appareil › Journal.
+final class StrapLog: ObservableObject {
+    @Published fileprivate(set) var lines: [StrapLogLine] = []
+}
+
 final class StrapManager: NSObject, ObservableObject {
     static let shared = StrapManager()
 
     // MARK: Published (main thread)
     @Published private(set) var state: StrapConnState = .idle
     @Published private(set) var discovered: [DiscoveredStrap] = []
-    @Published private(set) var liveHR: Int?
-    @Published private(set) var liveHRDate: Date?
     @Published private(set) var battery: Double?
     @Published private(set) var charging = false
     @Published private(set) var wristOn: Bool?
@@ -66,12 +87,21 @@ final class StrapManager: NSObject, ObservableObject {
     @Published private(set) var firmware: String?
     @Published private(set) var model: String?
     @Published private(set) var syncing = false
-    @Published private(set) var syncedThisSession = 0
-    @Published private(set) var syncNewest: Date?
     @Published private(set) var lastSync: Date?
     @Published private(set) var lastError: String?
-    @Published private(set) var log: [StrapLogLine] = []
     @Published private(set) var pairedID: UUID?
+
+    // Fast-changing values live in their own small observable objects, so a 1 Hz heart rate or
+    // a sync progress counter only redraws the few views that display them (not every screen
+    // observing the strap).
+    let live = LiveHeartRate()
+    let progress = SyncProgress()
+    let logs = StrapLog()
+    var liveHR: Int? { live.bpm }
+    var liveHRDate: Date? { live.date }
+    var syncedThisSession: Int { progress.seconds }
+    var syncNewest: Date? { progress.newest }
+    var log: [StrapLogLine] { logs.lines }
 
     /// Called on the BLE queue after a history batch is durable (sample count, newest ts).
     var onHistoryCommitted: ((Int, Int?) -> Void)?
@@ -203,7 +233,7 @@ final class StrapManager: NSObject, ObservableObject {
             UserDefaults.standard.removeObject(forKey: Keys.name)
             self.qPairedID = nil
             self.userInitiatedConnect = false
-            self.publish { $0.pairedID = nil; $0.strapName = nil; $0.battery = nil; $0.liveHR = nil }
+            self.publish { $0.pairedID = nil; $0.strapName = nil; $0.battery = nil; $0.live.set(nil) }
             self.setState(.idle)
         }
     }
@@ -267,6 +297,11 @@ final class StrapManager: NSObject, ObservableObject {
     }
 
     /// Keep the realtime HR stream on (live activity / live screen).
+    /// Demo mode only: a simulated heart rate for the live screens.
+    func simulateLive(_ bpm: Int?) {
+        DispatchQueue.main.async { self.live.set(bpm, at: bpm == nil ? nil : Date()) }
+    }
+
     func setLiveWanted(_ on: Bool) {
         queue.async {
             self.liveWanted = on
@@ -306,8 +341,8 @@ final class StrapManager: NSObject, ObservableObject {
     private func logLine(_ s: String) {
         let line = StrapLogLine(date: Date(), text: s)
         publish {
-            $0.log.append(line)
-            if $0.log.count > 400 { $0.log.removeFirst($0.log.count - 400) }
+            $0.logs.lines.append(line)
+            if $0.logs.lines.count > 400 { $0.logs.lines.removeFirst($0.logs.lines.count - 400) }
         }
     }
 
@@ -372,7 +407,7 @@ final class StrapManager: NSObject, ObservableObject {
         drain = HistoryDrain(profile: bandProfile)
         drainStarting = false
         failDrainWaiters()
-        publish { $0.syncing = false; $0.liveHR = nil }
+        publish { $0.syncing = false; $0.live.set(nil) }
     }
 
     // MARK: Writes & awaited responses
@@ -567,7 +602,7 @@ final class StrapManager: NSObject, ObservableObject {
     private func markDrainStarted() {
         drainStartedAt = Date()
         lastHistoryTraffic = Date()
-        publish { $0.syncing = true; $0.syncedThisSession = 0 }
+        publish { $0.syncing = true; $0.progress.seconds = 0 }
     }
 
     @discardableResult
@@ -631,8 +666,8 @@ final class StrapManager: NSObject, ObservableObject {
             let newest = samples.map(\.ts).max()
             let total = drain.totalSamples
             publish {
-                $0.syncedThisSession = total
-                if let n = newest { $0.syncNewest = Date(timeIntervalSince1970: TimeInterval(n)) }
+                $0.progress.seconds = total
+                if let n = newest { $0.progress.newest = Date(timeIntervalSince1970: TimeInterval(n)) }
             }
             onHistoryCommitted?(samples.count, newest)
         case let .refuse(shortfall):
@@ -667,16 +702,16 @@ final class StrapManager: NSObject, ObservableObject {
         guard want != liveEnabledOnStrap else { return }
         send(WhoopCommands.toggleRealtimeHR(seq: seq.nextLive(), on: want, profile: bandProfile))
         liveEnabledOnStrap = want
-        if !want { publish { $0.liveHR = nil } }
+        if !want { publish { $0.live.set(nil) } }
     }
 
     private func absorbLive(bpm: Int, rr: [Int], unix: Int?) {
         guard bpm > 0 else {
-            publish { $0.liveHR = nil }
+            publish { $0.live.set(nil) }
             return
         }
         let now = Date()
-        publish { $0.liveHR = bpm; $0.liveHRDate = now }
+        publish { $0.live.set(bpm, at: now) }
         let ts = unix.flatMap { plausibleUnix($0) ? $0 : nil } ?? Int(now.timeIntervalSince1970)
         var s = HistorySample(ts: ts, hr: UInt8(clamping: bpm))
         s.setRR(rr)

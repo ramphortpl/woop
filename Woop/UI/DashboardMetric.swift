@@ -160,3 +160,55 @@ enum DashboardMetric: String, Codable, CaseIterable, Identifiable {
         return Double(secs)
     }
 }
+
+// MARK: - Detail screens ("Sommeil des dernières nuits", "MODIFIER")
+
+extension DashboardMetric {
+    /// Metrics offered in each score screen's statistics section.
+    static let sleepChoices: [DashboardMetric] = [
+        .hoursOfSleep, .sleepPerformance, .sleepConsistency, .sleepEfficiency, .restorativeHours, .restorativePct,
+        .timeInBed, .sleepDebt, .sleepNeeded, .respRate,
+    ]
+    static let recoveryChoices: [DashboardMetric] = [.recovery, .hrv, .rhr, .respRate, .sleepPerformance, .vo2max, .avgHR]
+    static let strainChoices: [DashboardMetric] = [.dailyStrain, .calories, .avgHR, .steps, .zones13, .zones45, .allZones, .strengthTime, .vo2max]
+
+    static let sleepDefaults: [DashboardMetric] = [.hoursOfSleep, .sleepPerformance, .sleepConsistency, .sleepEfficiency, .restorativeHours, .respRate, .sleepDebt]
+    static let recoveryDefaults: [DashboardMetric] = [.recovery, .hrv, .rhr, .respRate, .sleepPerformance]
+    static let strainDefaults: [DashboardMetric] = [.dailyStrain, .calories, .avgHR, .steps, .zones13, .zones45]
+
+    /// Chart colour of the metric.
+    var color: Color {
+        switch self {
+        case .recovery: return Theme.recoveryGreen
+        case .dailyStrain, .strainRecovery, .calories, .zones13, .zones45, .allZones, .strengthTime, .steps: return Theme.strain
+        case .hrv, .rhr, .avgHR, .respRate, .vo2max: return Color(hex: 0xE0E3E6)
+        default: return Theme.sleep
+        }
+    }
+
+    /// Text of the (i) button.
+    var explanation: String {
+        switch self {
+        case .hrv: return "Variabilité de la fréquence cardiaque (RMSSD) mesurée pendant ton sommeil, pondérée vers le dernier sommeil profond. Plus elle est haute par rapport à ta norme, mieux ton système nerveux récupère."
+        case .rhr: return "Fréquence cardiaque au repos mesurée pendant le sommeil profond de la seconde moitié de la nuit. Une valeur plus haute que d'habitude signale souvent fatigue, stress, alcool ou début de maladie."
+        case .vo2max: return "Estimation à partir du rapport FC max / FC au repos (méthode d'Uth et al., 2004). Ce n'est pas une mesure de laboratoire."
+        case .steps: return "Pas comptés par le capteur de mouvement du bracelet pendant la journée."
+        case .calories: return "Métabolisme de base (Mifflin–St Jeor) plus la dépense liée à la fréquence cardiaque (Keytel et al., 2005)."
+        case .zones13, .zones45, .allZones: return "Temps passé dans les zones de fréquence cardiaque (en % de ta FC max) sur les 7 derniers jours."
+        case .respRate: return "Respirations par minute pendant le sommeil, déduites des variations du rythme cardiaque (arythmie sinusale respiratoire). Elle varie très peu d'une nuit à l'autre : un écart peut annoncer une maladie."
+        case .weight, .leanMass: return "Valeur issue de ton profil (Plus › Profil). La masse maigre est estimée avec la formule de Boer."
+        case .hoursOfSleep: return "Temps réellement endormi (sommeil léger, profond et paradoxal), sans les éveils. Le graphique montre ta fréquence cardiaque pendant la nuit ; touche une phase pour la mettre en évidence. La zone en pointillés indique ta plage habituelle sur 30 jours."
+        case .sleepPerformance: return "Heures de sommeil obtenues par rapport à ton besoin de la nuit (besoin de base, dette, effort de la veille et siestes)."
+        case .sleepConsistency: return "Régularité de tes heures de coucher et de lever sur les 4 dernières nuits. Optimal à partir de 80 %."
+        case .sleepEfficiency: return "Part du temps passé au lit pendant laquelle tu dormais. Optimal à partir de 90 %."
+        case .restorativeHours, .restorativePct: return "Sommeil réparateur : sommeil profond (SOL, ondes lentes) et sommeil paradoxal (SP). C'est là que le corps et le cerveau récupèrent le plus."
+        case .timeInBed: return "Du coucher (premier moment immobile) au lever."
+        case .sleepDebt: return "Sommeil manquant accumulé ces dernières nuits, ajouté à ton besoin de cette nuit."
+        case .sleepNeeded: return "Ton besoin de sommeil pour la nuit à venir : besoin de base, dette, effort de la journée et siestes."
+        case .recovery: return "La récupération compare ta VFC, ta fréquence cardiaque au repos, ta respiration et ton sommeil à tes propres moyennes. Vert : prêt pour un effort important ; jaune : effort modéré ; rouge : repos."
+        case .dailyStrain, .strainRecovery: return "L'effort mesure ta charge cardiovasculaire de 0 à 21 (échelle logarithmique), à partir du temps passé au-dessus de ton niveau de repos éveillé."
+        case .avgHR: return "Fréquence cardiaque moyenne sur la journée (du réveil au réveil suivant)."
+        case .strengthTime: return "Temps passé en musculation, haltérophilie, CrossFit… sur les 7 derniers jours."
+        }
+    }
+}

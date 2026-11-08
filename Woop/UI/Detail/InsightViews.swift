@@ -32,36 +32,55 @@ struct MetricDetailView: View {
     @EnvironmentObject var app: AppState
     var metric: DashboardMetric
     var date: String
-    @State private var range = 30
+    @State private var range = 7
 
     var body: some View {
         let keys = (0..<range).reversed().map { DayKey.adding(-$0, to: date) }
         let values: [Double?] = keys.map { k in app.day(k).flatMap { metric.value(day: $0, state: app) } }
         let present = values.compactMap { $0 }
         let today = app.day(date).flatMap { metric.value(day: $0, state: app) }
+        let avg = app.baseline(metric, before: date)
         DetailScaffold(title: metric.title, subtitle: Fmt.longDate(date)) {
             VStack(spacing: 6) {
-                Text(metric.format(today)).font(WFont.number(64, weight: .bold)).foregroundColor(.white)
-                if today != nil && !metric.unit.isEmpty { Text(metric.unit).wLabel(12, color: Theme.textSecondary) }
+                HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(metric.format(today)).font(WFont.number(58, weight: .bold)).foregroundColor(.white)
+                        if today != nil && !metric.unit.isEmpty {
+                            Text(metric.unit).font(WFont.text(15, weight: .medium)).foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    if let today, let avg, abs(today - avg) > max(0.01, abs(avg) * 0.01) {
+                        TrendArrow(up: today > avg, good: metric.higherIsBetter.map { (today > avg) == $0 }, size: 12).padding(.top, 12)
+                    }
+                }
+                Text("Moyenne sur 30 jours : \(metric.format(avg))\(avg == nil || metric.unit.isEmpty ? "" : " " + metric.unit)")
+                    .font(WFont.text(13, weight: .medium)).foregroundColor(Theme.textSecondary)
             }
-            .padding(.top, 8)
-            Picker("Période", selection: $range) {
-                Text("7 J").tag(7)
-                Text("30 J").tag(30)
-                Text("90 J").tag(90)
+            .padding(.top, 10)
+
+            HStack(spacing: 6) {
+                ForEach([7, 30, 90], id: \.self) { r in
+                    Button {
+                        Haptics.select()
+                        withAnimation(.easeInOut(duration: 0.2)) { range = r }
+                    } label: {
+                        Text("\(r) J").wLabel(11, color: range == r ? .black : .white)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(Capsule().fill(range == r ? Color.white : Theme.pill.opacity(0.6)))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .pickerStyle(.segmented)
+            .padding(4)
+            .background(Capsule().fill(Theme.pillOuter))
+
             CardBox(title: "Tendance") {
                 if present.count >= 2 {
-                    LineTrace(values: values, color: color, minY: (present.min() ?? 0) * 0.95, maxY: (present.max() ?? 1) * 1.05)
-                        .frame(height: 140)
-                    HStack {
-                        Text(Fmt.dayTitle(keys.first ?? date)).font(.system(size: 11)).foregroundColor(Theme.textTertiary)
-                        Spacer()
-                        Text(Fmt.dayTitle(date)).font(.system(size: 11)).foregroundColor(Theme.textTertiary)
-                    }
+                    TrendChart(keys: keys, values: values, color: metric.color, format: { metric.format($0) },
+                               average: avg, usual: app.usualRange30(before: date) { metric.value(day: $0, state: app) },
+                               height: 170)
                 } else {
-                    Text("Pas encore assez de données.").foregroundColor(Theme.textSecondary)
+                    Text("Pas encore assez de données.").font(WFont.text(14)).foregroundColor(Theme.textSecondary)
                 }
             }
             TileGrid(tiles: [
@@ -70,30 +89,7 @@ struct MetricDetailView: View {
                 StatTile(title: "Maximum", value: metric.format(present.max()), unit: present.isEmpty ? "" : metric.unit),
                 StatTile(title: "Jours mesurés", value: "\(present.count)"),
             ])
-            Text(explanation).font(.system(size: 12)).foregroundColor(Theme.textTertiary)
-        }
-    }
-
-    private var color: Color {
-        switch metric {
-        case .recovery: return Theme.recoveryGreen
-        case .dailyStrain, .strainRecovery, .calories, .zones13, .zones45, .allZones, .strengthTime, .steps: return Theme.strain
-        case .hrv, .rhr, .avgHR, .respRate, .vo2max: return Theme.recoveryRed
-        default: return Theme.sleep
-        }
-    }
-
-    private var explanation: String {
-        switch metric {
-        case .hrv: return "Variabilité de la fréquence cardiaque (RMSSD) mesurée pendant le sommeil, pondérée vers le dernier sommeil profond."
-        case .rhr: return "Fréquence cardiaque au repos mesurée pendant le sommeil profond de la seconde moitié de la nuit."
-        case .vo2max: return "Estimation à partir du rapport FC max / FC au repos (méthode d'Uth et al., 2004). Ce n'est pas une mesure de laboratoire."
-        case .steps: return "Pas comptés par le capteur de mouvement du bracelet pendant la journée."
-        case .calories: return "Métabolisme de base (Mifflin–St Jeor) plus la dépense liée à la fréquence cardiaque (Keytel et al., 2005)."
-        case .zones13, .zones45, .allZones: return "Temps passé dans les zones de fréquence cardiaque (en % de ta FC max) sur les 7 derniers jours."
-        case .respRate: return "Respirations par minute pendant le sommeil, déduites des variations du rythme cardiaque (arythmie sinusale respiratoire)."
-        case .weight, .leanMass: return "Valeur issue de ton profil (Plus › Profil). La masse maigre est estimée avec la formule de Boer."
-        default: return "Calculé sur ton iPhone à partir des données de ton bracelet."
+            Text(metric.explanation).font(WFont.text(12.5)).foregroundColor(Theme.textTertiary).lineSpacing(2)
         }
     }
 }
@@ -109,7 +105,7 @@ struct DailyOutlookView: View {
         DetailScaffold(title: "Perspectives quotidiennes", subtitle: Fmt.longDate(date)) {
             CardBox {
                 Text(Coach.greeting(app.settings.profile.firstName)).font(WFont.title(24)).foregroundColor(.white)
-                Text(Coach.outlook(day: d, app: app)).font(.system(size: 16)).foregroundColor(Theme.textSecondary)
+                Text(Coach.outlook(day: d, app: app)).font(WFont.text(16)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let target = StrainTarget.forRecovery(d.recovery) {
@@ -120,11 +116,11 @@ struct DailyOutlookView: View {
                         Spacer()
                         Text("actuel : \(Fmt.dec1(d.strain))").font(WFont.number(18)).foregroundColor(Theme.textSecondary)
                     }
-                    Text("Une plage indicative selon ta récupération, pas une consigne.").font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    Text("Une plage indicative selon ta récupération, pas une consigne.").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                 }
             }
             CardBox(title: "Ce soir") {
-                Text(Coach.tonight(app: app)).font(.system(size: 15)).foregroundColor(Theme.textSecondary)
+                Text(Coach.tonight(app: app)).font(WFont.text(15)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -238,12 +234,12 @@ struct CoachView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Pose une question : les réponses sont calculées sur ton iPhone à partir de tes propres données, sans compte ni cloud.")
-                            .font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                            .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                         ForEach(thread) { qa in
-                            Text(qa.q).font(.system(size: 15, weight: .semibold)).foregroundColor(.black)
+                            Text(qa.q).font(WFont.text(15, weight: .semibold)).foregroundColor(.black)
                                 .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
-                            Text(qa.a).font(.system(size: 15)).foregroundColor(.white)
+                            Text(qa.a).font(WFont.text(15)).foregroundColor(.white)
                                 .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(Theme.cardInner))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -255,7 +251,7 @@ struct CoachView: View {
                         Button {
                             withAnimation { thread.append(Coach.QA(q: q, a: Coach.answer(q, app: app))) }
                         } label: {
-                            Text(q).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+                            Text(q).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 14).padding(.vertical, 11)
                                 .background(Capsule().stroke(Theme.coachPurple.opacity(0.7), lineWidth: 1.2))

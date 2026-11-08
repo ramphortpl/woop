@@ -3,6 +3,8 @@ import SwiftUI
 struct DeviceView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var strap: StrapManager
+    @ObservedObject private var live = StrapManager.shared.live
+    @ObservedObject private var progress = StrapManager.shared.progress
     @State private var confirmForget = false
 
     var body: some View {
@@ -17,12 +19,12 @@ struct DeviceView: View {
                     if strap.syncing {
                         HStack {
                             ProgressView().tint(.white)
-                            Text("Transfert en cours… \(Fmt.int(Double(strap.syncedThisSession))) s de données")
-                                .font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                            Text("Transfert en cours… \(Fmt.int(Double(progress.seconds))) s de données")
+                                .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                         }
-                        if let n = strap.syncNewest {
+                        if let n = progress.newest {
                             Text("Données jusqu'au \(n.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                                .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                         }
                     }
                     Button { strap.syncNow() } label: {
@@ -31,16 +33,16 @@ struct DeviceView: View {
                 }
                 CardBox(title: "Arrière-plan") {
                     Toggle(isOn: Binding(get: { app.settings.backgroundSync }, set: { app.settings.backgroundSync = $0 })) {
-                        Text("Synchronisation périodique").font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                        Text("Synchronisation périodique").font(WFont.text(15, weight: .medium)).foregroundColor(.white)
                     }
                     Toggle(isOn: Binding(get: { app.settings.continuousHR }, set: {
                         app.settings.continuousHR = $0
                         strap.setBackgroundLive($0)
                     })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Fréquence cardiaque en continu").font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                            Text("Fréquence cardiaque en continu").font(WFont.text(15, weight: .medium)).foregroundColor(.white)
                             Text("Garde le flux en direct même app fermée (consomme plus de batterie du bracelet).")
-                                .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                                .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
                         }
                     }
                 }
@@ -57,7 +59,7 @@ struct DeviceView: View {
                 .foregroundColor(.white)
             }
             Text("Woop se connecte directement au bracelet en Bluetooth. Aucune donnée ne quitte ton iPhone, aucun compte n'est nécessaire.")
-                .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
         }
         .confirmationDialog("Oublier ce bracelet ?", isPresented: $confirmForget, titleVisibility: .visible) {
             Button("Oublier", role: .destructive) { strap.forget() }
@@ -72,24 +74,24 @@ struct DeviceView: View {
             HStack(spacing: 16) {
                 StrapGlyph(connected: strap.state.isConnected, charging: strap.charging).scaleEffect(1.6).frame(width: 40, height: 50)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(strap.strapName ?? strap.model ?? "WHOOP").font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
-                    Text(strap.state.label).font(.system(size: 13, weight: .medium))
+                    Text(strap.strapName ?? strap.model ?? "WHOOP").font(WFont.text(18, weight: .semibold)).foregroundColor(.white)
+                    Text(strap.state.label).font(WFont.text(13, weight: .medium))
                         .foregroundColor(strap.state.isConnected ? Theme.recoveryGreen : Theme.textSecondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(strap.battery.map { "\(Int($0.rounded())) %" } ?? "—").font(WFont.number(28, weight: .bold)).foregroundColor(.white)
-                    Text(strap.charging ? "En charge" : "Batterie").font(.system(size: 11)).foregroundColor(Theme.textSecondary)
+                    Text(strap.charging ? "En charge" : "Batterie").font(WFont.text(11)).foregroundColor(Theme.textSecondary)
                 }
             }
-            if let hr = strap.liveHR {
+            if let hr = live.bpm {
                 Divider().overlay(Theme.separator)
                 HStack {
                     Image(systemName: "heart.fill").foregroundColor(Theme.recoveryRed)
-                    Text("Fréquence cardiaque en direct").font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+                    Text("Fréquence cardiaque en direct").font(WFont.text(14)).foregroundColor(Theme.textSecondary)
                     Spacer()
                     Text("\(hr)").font(WFont.number(26, weight: .bold)).foregroundColor(.white)
-                    Text("bpm").font(.system(size: 11)).foregroundColor(Theme.textSecondary)
+                    Text("bpm").font(WFont.text(11)).foregroundColor(Theme.textSecondary)
                 }
             }
             if strap.model != nil || strap.firmware != nil {
@@ -104,9 +106,9 @@ struct DeviceView: View {
 
     private func row(_ k: String, _ v: String) -> some View {
         HStack {
-            Text(k).font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+            Text(k).font(WFont.text(14)).foregroundColor(Theme.textSecondary)
             Spacer()
-            Text(v).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+            Text(v).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
         }
     }
 }
@@ -124,7 +126,7 @@ struct PairingCard: View {
                 step(4, "Accepte la demande d'appairage Bluetooth si iOS l'affiche.")
             }
             if let err = strap.lastError {
-                Text(err).font(.system(size: 13)).foregroundColor(Theme.alarmOrange)
+                Text(err).font(WFont.text(13)).foregroundColor(Theme.alarmOrange)
             }
             HStack {
                 Button {
@@ -132,7 +134,7 @@ struct PairingCard: View {
                 } label: {
                     HStack {
                         if strap.state == .scanning { ProgressView().tint(.black) }
-                        Text(strap.state == .scanning ? "Arrêter la recherche" : "Rechercher mon bracelet").wLabel(12.5, color: .black, tracking: 1)
+                        Text(strap.state == .scanning ? "Arrêter la recherche" : "Rechercher mon bracelet").wLabel(12.5, color: .black)
                     }
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(Capsule().fill(Color.white))
@@ -144,12 +146,12 @@ struct PairingCard: View {
                     HStack {
                         Image(systemName: "dot.radiowaves.left.and.right").foregroundColor(Theme.accentBlue)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(d.name).font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
-                            Text(d.generation?.label ?? "WHOOP").font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                            Text(d.name).font(WFont.text(16, weight: .semibold)).foregroundColor(.white)
+                            Text(d.generation?.label ?? "WHOOP").font(WFont.text(12)).foregroundColor(Theme.textSecondary)
                         }
                         Spacer()
-                        if d.rssi != 0 { Text("\(d.rssi) dBm").font(.system(size: 12)).foregroundColor(Theme.textTertiary) }
-                        Text("Connecter").wLabel(11, color: Theme.accentBlue, tracking: 1)
+                        if d.rssi != 0 { Text("\(d.rssi) dBm").font(WFont.text(12)).foregroundColor(Theme.textTertiary) }
+                        Text("Connecter").wLabel(11, color: Theme.accentBlue)
                     }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Theme.cardInner.opacity(0.6)))
@@ -157,9 +159,9 @@ struct PairingCard: View {
                 .buttonStyle(.plain)
             }
             if strap.state == .bluetoothOff {
-                Text("Active le Bluetooth dans le Centre de contrôle.").font(.system(size: 13)).foregroundColor(Theme.alarmOrange)
+                Text("Active le Bluetooth dans le Centre de contrôle.").font(WFont.text(13)).foregroundColor(Theme.alarmOrange)
             } else if strap.state == .unauthorized {
-                Text("Autorise Woop à utiliser le Bluetooth dans Réglages › Woop.").font(.system(size: 13)).foregroundColor(Theme.alarmOrange)
+                Text("Autorise Woop à utiliser le Bluetooth dans Réglages › Woop.").font(WFont.text(13)).foregroundColor(Theme.alarmOrange)
             }
         }
     }
@@ -168,23 +170,23 @@ struct PairingCard: View {
         HStack(alignment: .top, spacing: 10) {
             Text("\(n)").font(WFont.number(14, weight: .bold)).foregroundColor(.black)
                 .frame(width: 22, height: 22).background(Circle().fill(Theme.accentBlue))
-            Text(t).font(.system(size: 13)).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(t).font(WFont.text(13)).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 
 struct BluetoothLogView: View {
-    @EnvironmentObject var strap: StrapManager
+    @ObservedObject private var logs = StrapManager.shared.logs
 
     var body: some View {
         DetailScaffold(title: "Journal Bluetooth") {
-            if strap.log.isEmpty {
+            if logs.lines.isEmpty {
                 CardBox { Text("Aucun événement pour l'instant.").foregroundColor(Theme.textSecondary) }
             }
-            ForEach(strap.log.reversed()) { l in
+            ForEach(logs.lines.reversed()) { l in
                 HStack(alignment: .top, spacing: 10) {
                     Text(Fmt.clock24(l.date)).font(.system(size: 11, design: .monospaced)).foregroundColor(Theme.textTertiary)
-                    Text(l.text).font(.system(size: 12)).foregroundColor(.white).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(l.text).font(WFont.text(12)).foregroundColor(.white).frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
             }

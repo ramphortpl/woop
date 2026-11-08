@@ -13,12 +13,12 @@ struct WhoopImportView: View {
         DetailScaffold(title: "Importer depuis WHOOP") {
             CardBox(title: "Pourquoi importer ?") {
                 Text("Tes jours passés affichent exactement les scores WHOOP (récupération, effort, sommeil, entraînements) et tes moyennes de référence sont calibrées tout de suite, sans attendre 4 nuits.")
-                    .font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let first = app.importedDays.keys.min(), let last = app.importedDays.keys.max() {
                     Label("\(app.importedDays.count) jours WHOOP importés (\(Fmt.longDate(first)) → \(Fmt.longDate(last)))",
                           systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.recoveryGreen)
+                        .font(WFont.text(12, weight: .semibold)).foregroundColor(Theme.recoveryGreen)
                 }
             }
 
@@ -31,11 +31,11 @@ struct WhoopImportView: View {
                 if app.importRunning {
                     HStack(spacing: 10) {
                         ProgressView().tint(.white)
-                        Text(app.importStatusText ?? "Import en cours…").font(.system(size: 14, weight: .medium)).foregroundColor(.white)
+                        Text(app.importStatusText ?? "Import en cours…").font(WFont.text(14, weight: .medium)).foregroundColor(.white)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else if let last = app.lastImportMessage {
-                    Text(last).font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    Text(last).font(WFont.text(12)).foregroundColor(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,10 +54,10 @@ struct WhoopImportView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
                         Image(systemName: "link").font(.system(size: 18)).foregroundColor(Theme.accentBlue).frame(width: 26)
-                        Text("Coller le lien de l'e-mail").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+                        Text("Coller le lien de l'e-mail").font(WFont.text(16, weight: .semibold)).foregroundColor(.white)
                     }
                     Text("Dans l'e-mail WHOOP, appuie longuement sur le bouton de téléchargement › Copier le lien, puis colle-le ici.")
-                        .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                        .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         TextField("https://…", text: $link)
@@ -75,7 +75,7 @@ struct WhoopImportView: View {
                                 app.importWhoop(link: link)
                             }
                         } label: {
-                            Text(link.isEmpty ? "Coller" : "Importer").wLabel(12, color: .black, tracking: 0.8)
+                            Text(link.isEmpty ? "Coller" : "Importer").wLabel(12, color: .black)
                                 .padding(.horizontal, 14).frame(height: 40)
                                 .background(Capsule().fill(Color.white))
                         }
@@ -91,7 +91,7 @@ struct WhoopImportView: View {
             }
 
             Text("Les exports en français et en anglais sont reconnus (fichiers .zip ou .csv, même réenregistrés par Numbers ou Excel). Le journal WHOOP est ignoré.")
-                .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
         }
         .sheet(item: $picker) { mode in
             DocumentPicker(mode: mode) { urls in
@@ -107,7 +107,7 @@ struct WhoopImportView: View {
     private func step(_ t: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle().fill(Theme.textTertiary).frame(width: 5, height: 5).padding(.top, 7)
-            Text(t).font(.system(size: 13)).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(t).font(WFont.text(13)).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -125,8 +125,8 @@ private struct ImportOption: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon).font(.system(size: 18)).foregroundColor(Theme.accentBlue).frame(width: 26)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
-                    Text(detail).font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    Text(title).font(WFont.text(16, weight: .semibold)).foregroundColor(.white)
+                    Text(detail).font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                 }

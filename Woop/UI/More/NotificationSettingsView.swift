@@ -29,7 +29,7 @@ struct NotificationSettingsView: View {
                             value: Binding(get: { app.settings.notify.bedtimeLeadMinutes },
                                            set: { app.settings.notify.bedtimeLeadMinutes = $0 }),
                             in: 10...120, step: 5)
-                        .font(.system(size: 14)).foregroundColor(.white)
+                        .font(WFont.text(14)).foregroundColor(.white)
                 }
             }
             CardBox(title: "Effort") {
@@ -47,11 +47,11 @@ struct NotificationSettingsView: View {
                     app.settings.continuousHR = $0
                     strap.setBackgroundLive($0)
                 })) {
-                    Text("Connexion continue au bracelet").font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
+                    Text("Connexion continue au bracelet").font(WFont.text(15, weight: .semibold)).foregroundColor(.white)
                 }
                 .tint(Theme.recoveryGreen)
                 Text("iOS met Woop en veille. Sans cette option, une activité est annoncée à la synchronisation suivante (quand tu ouvres l'app ou quand iOS la réveille). Avec, Woop reste connecté et te prévient quelques minutes après la fin de l'activité, contre un peu plus de batterie du bracelet. Dans les deux cas, ne ferme pas Woop depuis le sélecteur d'apps.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -63,7 +63,7 @@ struct NotificationSettingsView: View {
             .padding(.horizontal, 28)
             if testSent {
                 Text("Verrouille ton iPhone : la notification arrive dans 5 secondes.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
             }
         }
         .onAppear { notifier.refreshStatus() }
@@ -76,9 +76,9 @@ struct NotificationSettingsView: View {
         case .denied:
             CardBox {
                 Label("Notifications désactivées pour Woop", systemImage: "bell.slash.fill")
-                    .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.recoveryYellow)
+                    .font(WFont.text(15, weight: .semibold)).foregroundColor(Theme.recoveryYellow)
                 Text("Active-les dans Réglages › Notifications › Woop pour recevoir tes activités et ta récupération.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
                     if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
@@ -90,7 +90,7 @@ struct NotificationSettingsView: View {
         case .notDetermined:
             CardBox {
                 Text("Woop peut te prévenir comme l'app WHOOP : activités détectées, récupération du matin, effort cible, heure du coucher.")
-                    .font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button { notifier.requestAuthorization() } label: {
                     Text("Autoriser les notifications").wLabel(12.5, color: Theme.accentBlue)
@@ -100,7 +100,7 @@ struct NotificationSettingsView: View {
         default:
             CardBox {
                 Label("Notifications activées", systemImage: "bell.badge.fill")
-                    .font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.recoveryGreen)
+                    .font(WFont.text(15, weight: .semibold)).foregroundColor(Theme.recoveryGreen)
             }
         }
     }
@@ -108,8 +108,8 @@ struct NotificationSettingsView: View {
     private func toggle(_ title: String, _ detail: String, _ kp: WritableKeyPath<NotifyPrefs, Bool>) -> some View {
         Toggle(isOn: Binding(get: { app.settings.notify[keyPath: kp] }, set: { app.settings.notify[keyPath: kp] = $0 })) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
-                Text(detail).font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                Text(title).font(WFont.text(15, weight: .semibold)).foregroundColor(.white)
+                Text(detail).font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

@@ -38,7 +38,7 @@ struct HealthView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     HStack {
-                        Text("Santé").font(WFont.title(32)).foregroundColor(.white)
+                        Text("Santé").font(WFont.title(28)).foregroundColor(.white)
                         Spacer()
                         Text(Fmt.dayTitle(app.selectedDate)).wLabel(12, color: Theme.textSecondary)
                     }
@@ -46,9 +46,9 @@ struct HealthView: View {
                     CardBox(title: "Moniteur de santé") {
                         HStack(alignment: .firstTextBaseline) {
                             Text(measured > 0 ? "\(inRange)/\(measured)" : "—").font(WFont.number(44, weight: .bold)).foregroundColor(.white)
-                            Text("paramètres dans ta norme").font(.system(size: 14, weight: .medium)).foregroundColor(Theme.textSecondary)
+                            Text("paramètres dans ta norme").font(WFont.text(14, weight: .medium)).foregroundColor(Theme.textSecondary)
                         }
-                        Text("Mesurés pendant ton sommeil et comparés à tes 30 derniers jours.").font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                        Text("Mesurés pendant ton sommeil et comparés à tes 30 derniers jours.").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                     }
                     ForEach(vitals) { v in
                         if let m = v.metric {
@@ -70,7 +70,7 @@ struct HealthView: View {
                         }
                     }
                     Text("Woop n'est pas un dispositif médical. Ces mesures sont des estimations et ne remplacent pas l'avis d'un professionnel de santé.")
-                        .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                        .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 120)
@@ -91,11 +91,11 @@ struct HealthView: View {
         return HStack(spacing: 14) {
             Image(systemName: v.icon).font(.system(size: 20)).foregroundColor(Theme.textSecondary).frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
-                Text(v.title).wLabel(11.5, tracking: 1.2).lineLimit(2).minimumScaleFactor(0.8)
+                Text(v.title).wLabel(11.5).lineLimit(2).minimumScaleFactor(0.8)
                 if let r = v.range {
-                    Text("Norme : \(v.format(r.lowerBound)) – \(v.format(r.upperBound)) \(v.unit)").font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    Text("Norme : \(v.format(r.lowerBound)) – \(v.format(r.upperBound)) \(v.unit)").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                 } else {
-                    Text("Norme en cours d'apprentissage").font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    Text("Norme en cours d'apprentissage").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                 }
             }
             Spacer()
@@ -104,7 +104,7 @@ struct HealthView: View {
                     .foregroundColor(ok ? Theme.recoveryGreen : Theme.recoveryYellow)
             }
             Text(v.format(v.value)).font(WFont.number(24, weight: .bold)).foregroundColor(.white)
-            Text(v.value == nil ? "" : v.unit).font(.system(size: 11, weight: .semibold)).foregroundColor(Theme.textSecondary)
+            Text(v.value == nil ? "" : v.unit).font(WFont.text(11, weight: .semibold)).foregroundColor(Theme.textSecondary)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.cardGradient))
@@ -113,7 +113,7 @@ struct HealthView: View {
     private func stageLine(_ name: String, _ s: SleepStage, _ sec: Double, _ total: Double) -> some View {
         HStack {
             Circle().fill(Theme.stageColor(s)).frame(width: 10, height: 10)
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+            Text(name).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
             Spacer()
             Text(total > 0 ? "\(Int((sec / total * 100).rounded())) %" : "—").font(WFont.number(18, weight: .bold)).foregroundColor(.white)
         }
@@ -132,7 +132,7 @@ struct CommunityView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     HStack {
-                        Text("Communauté").font(WFont.title(32)).foregroundColor(.white)
+                        Text("Communauté").font(WFont.title(28)).foregroundColor(.white)
                         Spacer()
                     }
                     .padding(.top, 12)
@@ -170,7 +170,7 @@ struct CommunityView: View {
                         challenge("Régularité ≥ 80 % sur 7 jours", count: week.filter { ($0.sleepConsistency ?? 0) >= 80 }.count, goal: 7)
                     }
                     Text("Les équipes et classements WHOOP nécessitent un compte en ligne : Woop fonctionne entièrement hors ligne, tes données restent sur ton iPhone.")
-                        .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                        .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 120)
@@ -182,7 +182,7 @@ struct CommunityView: View {
 
     private func record(_ t: String, _ v: String?) -> some View {
         HStack {
-            Text(t).font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+            Text(t).font(WFont.text(14)).foregroundColor(Theme.textSecondary)
             Spacer()
             Text(v ?? "—").font(WFont.number(19, weight: .bold)).foregroundColor(.white)
         }
@@ -191,7 +191,7 @@ struct CommunityView: View {
     private func challenge(_ t: String, count: Int, goal: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(t).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+                Text(t).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
                 Spacer()
                 Text("\(min(count, goal))/\(goal)").font(WFont.number(15, weight: .bold)).foregroundColor(count >= goal ? Theme.recoveryGreen : Theme.textSecondary)
             }

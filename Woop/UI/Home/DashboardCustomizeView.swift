@@ -19,10 +19,10 @@ struct DashboardCustomizeView: View {
                 SheetHeader(title: "Personnaliser le tableau de bord") { dismiss() }
                 List {
                     Text("Mon tableau de bord")
-                        .font(.system(size: 25, weight: .regular)).foregroundColor(.white)
+                        .font(WFont.title(20)).foregroundColor(.white)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 34, leading: 20, bottom: 16, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 34, leading: 16, bottom: 14, trailing: 20))
                         .moveDisabled(true)
 
                     ForEach(selected) { m in
@@ -33,13 +33,13 @@ struct DashboardCustomizeView: View {
                     .onMove { from, to in selected.move(fromOffsets: from, toOffset: to) }
 
                     HStack(spacing: 12) {
-                        Text("Ajouter à mon tableau de bord").wLabel(13, weight: .bold, color: Theme.textSecondary, tracking: 1.6)
+                        Text("Ajouter à mon tableau de bord").wLabel(11.4, color: Color(hex: 0x8C8F92))
                             .lineLimit(1).minimumScaleFactor(0.7)
-                        Rectangle().fill(Theme.textTertiary.opacity(0.5)).frame(height: 1)
+                        Rectangle().fill(Color(hex: 0x2C2F34)).frame(height: 1)
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 34, leading: 20, bottom: 12, trailing: 20))
+                    .listRowInsets(EdgeInsets(top: 34, leading: 16, bottom: 12, trailing: 16))
                     .moveDisabled(true)
 
                     ForEach(available) { m in
@@ -73,8 +73,8 @@ struct DashboardCustomizeView: View {
                 app.settings.dashboard = selected
                 dismiss()
             }
-            .padding(.horizontal, 44)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 34)
+            .padding(.bottom, 20)
         }
         .onAppear {
             if !loaded { selected = app.settings.dashboard; loaded = true }
@@ -93,17 +93,17 @@ struct DashboardCustomizeView: View {
 
     private func row(_ m: DashboardMetric, trailing: AnyView?) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: m.icon).font(.system(size: 18)).foregroundColor(Theme.textSecondary).frame(width: 24)
-            Text(m.title).wLabel(12, weight: .bold, tracking: 1.25).lineLimit(2).minimumScaleFactor(0.8)
+            Image(systemName: m.icon).font(.system(size: 18, weight: .light)).foregroundColor(Color(hex: 0x9A9EA2)).frame(width: 24)
+            Text(m.title).wLabel(12.3).lineLimit(2).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             if m.isChart {
-                Image(systemName: "chart.bar").font(.system(size: 22)).foregroundColor(Theme.textSecondary)
+                Image(systemName: "chart.bar").font(.system(size: 20, weight: .light)).foregroundColor(Color(hex: 0x9A9EA2))
             }
             if let trailing { trailing }
         }
-        .frame(minHeight: 50)
+        .frame(minHeight: 44)
         .listRowBackground(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .fill(Theme.cardGradient)
                 .padding(.vertical, 5)
                 .padding(.horizontal, 16)

@@ -6,14 +6,39 @@ la récupération et l'effort, avec une interface calquée sur l'app WHOOP.
 
 Aucun compte, aucun cloud : tout reste sur ton téléphone.
 
-## Télécharger l'IPA
+## Télécharger l'IPA — version 1.1.0
 
-Chaque modification du code reconstruit automatiquement l'application (GitHub Actions, macOS) :
+**➜ https://github.com/ramphortpl/woop/releases/download/v1.1.0/Woop.ipa**
 
-**➜ https://github.com/ramphortpl/woop/releases/download/ipa-latest/Woop.ipa**
+Toutes les versions : [page des releases](https://github.com/ramphortpl/woop/releases).
+Chaque modification du code reconstruit aussi l'application (GitHub Actions, macOS) ; la toute
+dernière compilation est toujours ici :
+https://github.com/ramphortpl/woop/releases/download/ipa-latest/Woop.ipa
 
-L'IPA n'est pas signée : ouvre ce lien depuis ton iPhone ou colle-le dans ton signer
+L'IPA n'est pas signée : ouvre le lien depuis ton iPhone ou colle-le dans ton signer
 (ESign, Feather, Scarlet, Sideloadly, AltStore…), signe-la puis installe-la.
+
+## Nouveautés de la 1.1
+
+- **Affichage refait au millimètre sur l'app WHOOP** : tailles, espacements et couleurs mesurés sur
+  des captures de l'app officielle ; titres en capitales fines et espacées, chiffres de type DIN,
+  texte géométrique (polices libres Montserrat, Figtree et Barlow), plus d'écriture trop épaisse.
+- **Sommeil** comme sur WHOOP : grand anneau « Votre sommeil » (et pages heures / sommeil
+  réparateur), analyse *Heures par rapport aux besoins*, *Régularité*, *Efficacité*, *Stress élevé
+  pendant le sommeil* avec les barres Insuffisant / Suffisant / Optimal, puis *Sommeil des dernières
+  nuits* : fréquence cardiaque pendant la nuit (repères coucher / réveil), phases Réveil, Léger,
+  SOL (profond), SP avec ta **plage habituelle** en pointillés, sommeil réparateur. Touche une phase
+  pour la voir sur le graphique. Bouton **Modifier** pour choisir les statistiques affichées.
+- **Récupération** et **Effort** sur le même modèle, avec l'effort optimal du jour sur l'anneau et
+  la courbe de fréquence cardiaque de la journée (activités et sommeil surlignés).
+- **Commencer l'activité** comme sur WHOOP : carte plein écran, **BPM en direct en grand** dans le
+  cercle bleu (« Déconnecté » si le bracelet ne l'est pas), *Suivi d'itinéraire* GPS, *Objectif
+  d'effort*, puis pendant l'activité : effort, durée, distance, calories, FC moyenne en direct.
+  Le parcours est enregistré avec l'activité.
+- **Détail d'une activité** : FC minute par minute colorée par zone, zones, parcours sur la carte.
+- **Plus fluide** : le rythme cardiaque en direct ne redessine plus tout l'écran chaque seconde,
+  onglets gardés en mémoire (changement instantané), graphiques dessinés en une passe, retours
+  haptiques légers.
 
 ## Connecter le bracelet
 
@@ -75,10 +100,11 @@ Pas encore de bracelet sous la main ? *Plus › Mode démo* affiche l'interface 
 |---|---|
 | **Accueil** | Anneaux Sommeil / Récupération / Effort, sélecteur de jour, série 🔥, batterie du bracelet, *Perspectives quotidiennes*, *Activités du jour* (sommeil, siestes, entraînements), *Sommeil de ce soir* (heure de coucher recommandée, alarme), *Mon tableau de bord* |
 | **Personnaliser le tableau de bord** | Les 25 indicateurs de WHOOP (VFC, FC au repos, pas, zones de FC hebdo, VO₂ max, calories, effort et récupération, poids, temps de musculation, dette/efficacité/régularité du sommeil, fréquence respiratoire, sommeil réparateur…), réorganisables |
-| **Sommeil** | Performance, besoin, hypnogramme (éveil / léger / profond / paradoxal), efficacité, régularité, latence, perturbations, cycles, dette |
-| **Récupération** | Score 0–100 % (vert / jaune / rouge) et ses facteurs vs tes moyennes 30 j |
-| **Effort** | Score 0–21, courbe de la journée, zones de FC, calories, pas, activités |
-| **Activités** | Plus de 150 sports (raquette, collectifs, combat, nautiques, hiver, fitness…), recherche, récents, détection automatique |
+| **Sommeil** | Anneau « Votre sommeil », analyse Insuffisant / Suffisant / Optimal, FC pendant la nuit, phases (réveil, léger, SOL, SP) vs ta plage habituelle, sommeil réparateur, tendances 7 jours vs 30 jours, latence, perturbations, cycles, dette |
+| **Récupération** | Score 0–100 % (vert / jaune / rouge), VFC, FC au repos, respiration et sommeil vs tes moyennes 30 j, tendances |
+| **Effort** | Score 0–21 avec l'effort optimal du jour, FC de la journée, activités, zones de FC, calories, pas, tendances |
+| **Commencer l'activité** | Carte, suivi d'itinéraire GPS, BPM en direct, objectif d'effort, effort / calories / distance en direct |
+| **Activités** | Plus de 150 sports (raquette, collectifs, combat, nautiques, hiver, fitness…), recherche, récents, détection automatique, FC par zones et parcours |
 | **Santé** | Moniteur de santé : FC au repos, VFC, respiration, SpO₂ (estimation), température cutanée vs ta norme |
 | **Communauté** | Série, résumé de la semaine, records, défis (hors ligne) |
 | **Plus** | Profil, bracelet (état, batterie, firmware, synchro, vibration, journal Bluetooth), réglages, données |

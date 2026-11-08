@@ -25,6 +25,14 @@ enum Strain {
         return Stats.clamp((hr - rest) / (max - rest), 0, 1)
     }
 
+    /// Inverse of `fromNetTrimp` (net load that yields a given strain), to add a live session's
+    /// load to the day's strain.
+    static func netTrimp(forStrain strain: Double) -> Double {
+        let s = Stats.clamp(strain, 0, 21)
+        let u = (pow(curvature, s / 21) - 1) / (curvature - 1)
+        return u * maximalNetTrimp
+    }
+
     static func fromNetTrimp(_ net: Double) -> Double {
         guard net.isFinite, net > 0 else { return 0 }
         let u = min(1, net / maximalNetTrimp)

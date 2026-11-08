@@ -86,6 +86,13 @@ struct SleepSession: Codable, Equatable, Sendable, Identifiable {
     var restorativeFraction: Double { asleepSec > 0 ? Double(restorativeSec) / Double(asleepSec) : 0 }
 }
 
+/// One GPS fix of an activity route.
+struct RoutePoint: Codable, Equatable, Sendable {
+    var lat: Double
+    var lon: Double
+    var ts: Int
+}
+
 /// A workout / activity inside a day.
 struct ActivityRecord: Codable, Equatable, Sendable, Identifiable {
     enum Source: String, Codable, Sendable { case auto, manual, live, imported }
@@ -103,6 +110,8 @@ struct ActivityRecord: Codable, Equatable, Sendable, Identifiable {
     var zoneSeconds: [Int] = Array(repeating: 0, count: 6)
     var distanceKm: Double?
     var note: String?
+    /// GPS track recorded with "Suivi d'itinéraire" (live activities).
+    var route: [RoutePoint]?
 
     var durationSec: Int { max(0, end - start) }
 }

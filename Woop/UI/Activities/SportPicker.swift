@@ -73,7 +73,7 @@ struct SportPickerView: View {
                     let found = SportCatalog.search(query)
                     if found.isEmpty {
                         Text("Aucune activité ne correspond. Choisis « Activité » ou « Autre ».")
-                            .font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+                            .font(WFont.text(14)).foregroundColor(Theme.textSecondary)
                             .listRowBackground(Theme.card)
                     } else {
                         rows(found)
@@ -96,7 +96,7 @@ struct SportPickerView: View {
     }
 
     private func header(_ t: String) -> some View {
-        Text(t).wLabel(11.5, color: Theme.textSecondary, tracking: 1.2)
+        Text(t).wLabel(11.5, color: Theme.textSecondary)
     }
 
     private func rows(_ list: [SportInfo]) -> some View {
@@ -109,7 +109,7 @@ struct SportPickerView: View {
                 HStack(spacing: 14) {
                     Image(systemName: Sport.resolve(s.icons)).font(.system(size: 19))
                         .foregroundColor(.white).frame(width: 30)
-                    Text(s.label).font(.system(size: 16, weight: .medium)).foregroundColor(.white)
+                    Text(s.label).font(WFont.text(16, weight: .medium)).foregroundColor(.white)
                     Spacer()
                     if s.key == selected {
                         Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.recoveryGreen)
@@ -137,9 +137,9 @@ struct SportChooser: View {
                         .frame(width: 52, height: 52)
                         .background(Circle().fill(Color.white))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(Sport.label(sport)).font(.system(size: 19, weight: .semibold)).foregroundColor(.white)
+                        Text(Sport.label(sport)).font(WFont.text(19, weight: .semibold)).foregroundColor(.white)
                             .lineLimit(2).minimumScaleFactor(0.8)
-                        Text("Changer d'activité").wLabel(11, color: Theme.accentBlue, tracking: 1)
+                        Text("Changer d'activité").wLabel(11, color: Theme.accentBlue)
                     }
                     Spacer()
                     Image(systemName: "chevron.right").foregroundColor(Theme.textTertiary)
@@ -153,7 +153,7 @@ struct SportChooser: View {
                     Button { sport = k } label: {
                         VStack(spacing: 6) {
                             Image(systemName: Sport.icon(k)).font(.system(size: 22))
-                            Text(Sport.label(k)).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.6)
+                            Text(Sport.label(k)).font(WFont.text(11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.6)
                         }
                         .foregroundColor(sport == k ? .black : .white)
                         .frame(maxWidth: .infinity, minHeight: 70)
@@ -167,7 +167,7 @@ struct SportChooser: View {
             Button { showAll = true } label: {
                 HStack {
                     Image(systemName: "magnifyingglass")
-                    Text("Toutes les activités (\(SportCatalog.all.count))").wLabel(12, tracking: 1)
+                    Text("Toutes les activités (\(SportCatalog.all.count))").wLabel(12)
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity, minHeight: 44)

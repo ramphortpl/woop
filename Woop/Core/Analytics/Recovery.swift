@@ -139,4 +139,18 @@ enum StrainTarget {
         default: return 13.5...18
         }
     }
+
+    /// One optimal value inside the band, placed by where the recovery sits in its zone
+    /// (e.g. 45 % → 10,5): the "Objectif d'effort" of an activity.
+    static func optimal(for r: Double?) -> Double? {
+        guard let r, let band = forRecovery(r) else { return nil }
+        let (lo, hi): (Double, Double)
+        switch r {
+        case ..<34: (lo, hi) = (0, 34)
+        case ..<67: (lo, hi) = (34, 67)
+        default: (lo, hi) = (67, 100)
+        }
+        let t = Stats.clamp((r - lo) / (hi - lo), 0, 1)
+        return ((band.lowerBound + t * (band.upperBound - band.lowerBound)) * 10).rounded() / 10
+    }
 }

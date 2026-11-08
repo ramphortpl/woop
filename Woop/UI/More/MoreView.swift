@@ -15,7 +15,7 @@ struct MoreView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     HStack {
-                        Text("Plus").font(WFont.title(32)).foregroundColor(.white)
+                        Text("Plus").font(WFont.title(28)).foregroundColor(.white)
                         Spacer()
                     }
                     .padding(.top, 12)
@@ -24,14 +24,14 @@ struct MoreView: View {
                         HStack(spacing: 14) {
                             ZStack {
                                 Circle().fill(LinearGradient(colors: [Color(hex: 0x6EDBCB), Color(hex: 0x3FB3A6)], startPoint: .top, endPoint: .bottom))
-                                Text(app.settings.profile.initials).font(.system(size: 20, weight: .bold)).foregroundColor(Color(hex: 0x10302C))
+                                Text(app.settings.profile.initials).font(WFont.text(20, weight: .bold)).foregroundColor(Color(hex: 0x10302C))
                             }
                             .frame(width: 56, height: 56)
                             VStack(alignment: .leading, spacing: 3) {
                                 let p = app.settings.profile
                                 Text("\(p.firstName) \(p.lastName)".trimmingCharacters(in: .whitespaces).isEmpty ? "Mon profil" : "\(p.firstName) \(p.lastName)")
-                                    .font(.system(size: 19, weight: .semibold)).foregroundColor(.white)
-                                Text("\(p.age) ans · \(Int(p.heightCm)) cm · \(Fmt.dec1(p.weightKg)) kg").font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                                    .font(WFont.text(19, weight: .semibold)).foregroundColor(.white)
+                                Text("\(p.age) ans · \(Int(p.heightCm)) cm · \(Fmt.dec1(p.weightKg)) kg").font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").foregroundColor(Theme.textTertiary)
@@ -68,7 +68,7 @@ struct MoreView: View {
                         link("Licences et crédits", "doc.text", detail: nil) { AboutView() }
                     }
                     Text("Woop \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") — application indépendante, non affiliée à WHOOP, Inc.")
-                        .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                        .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 120)
@@ -99,9 +99,9 @@ struct MoreView: View {
     private func rowLabel(_ t: String, _ icon: String, detail: String?) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.system(size: 17)).foregroundColor(Theme.textSecondary).frame(width: 26)
-            Text(t).font(.system(size: 16, weight: .medium)).foregroundColor(.white)
+            Text(t).font(WFont.text(16, weight: .medium)).foregroundColor(.white)
             Spacer()
-            if let detail { Text(detail).font(.system(size: 13)).foregroundColor(Theme.textSecondary).lineLimit(1) }
+            if let detail { Text(detail).font(WFont.text(13)).foregroundColor(Theme.textSecondary).lineLimit(1) }
         }
         .contentShape(Rectangle())
     }
@@ -147,7 +147,7 @@ struct ProfileEditView: View {
                     .keyboardType(.numberPad)
                     .foregroundColor(.white)
                 Text("Laisse vide pour une estimation automatique, ajustée avec tes pics observés.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
             }
             OutlineButton(title: "Enregistrer") {
                 p.maxHROverride = Int(maxHR.trimmingCharacters(in: .whitespaces))
@@ -184,12 +184,12 @@ struct SleepSettingsView: View {
             CardBox(title: "Besoin de sommeil de base") {
                 Stepper("\(Fmt.hmLong(need * 3600))", value: $need, in: 6...10, step: 0.25).foregroundColor(.white)
                 Text("Ton besoin réel de chaque nuit y ajoute l'effort de la veille et la dette de sommeil, moins les siestes.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
             }
             CardBox(title: "Heure de lever habituelle") {
                 DatePicker("Réveil", selection: $wake, displayedComponents: .hourAndMinute).foregroundColor(.white)
                 Text("Utilisée pour l'heure de coucher recommandée quand l'alarme est désactivée (sinon la médiane de tes réveils récents).")
-                    .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
             }
             OutlineButton(title: "Enregistrer") {
                 app.settings.profile.baselineSleepNeedHours = need
@@ -227,9 +227,9 @@ struct DataSettingsView: View {
                 NavigationLink { WhoopImportView() } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Importer mon export WHOOP").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+                            Text("Importer mon export WHOOP").font(WFont.text(16, weight: .semibold)).foregroundColor(.white)
                             Text(app.importedDays.isEmpty ? "Scores WHOOP exacts pour tes jours passés" : "\(app.importedDays.count) jours WHOOP importés")
-                                .font(.system(size: 12)).foregroundColor(app.importedDays.isEmpty ? Theme.textTertiary : Theme.recoveryGreen)
+                                .font(WFont.text(12)).foregroundColor(app.importedDays.isEmpty ? Theme.textTertiary : Theme.recoveryGreen)
                         }
                         Spacer()
                         Image(systemName: "chevron.right").foregroundColor(Theme.textTertiary)
@@ -240,7 +240,7 @@ struct DataSettingsView: View {
             }
             CardBox(title: "Calibrage des pas") {
                 Stepper("Diviseur : \(Fmt.dec1(calibration))×", value: $calibration, in: 0.5...30, step: 0.1).foregroundColor(.white)
-                Text("Si le bracelet compte trop de pas, augmente ce diviseur.").font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                Text("Si le bracelet compte trop de pas, augmente ce diviseur.").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
                 Button { app.settings.stepCalibration = calibration; app.recomputeAll() } label: {
                     Text("Appliquer").wLabel(12.5, color: Theme.accentBlue)
                 }.buttonStyle(.plain)
@@ -278,9 +278,9 @@ struct DataSettingsView: View {
 
     private func row(_ k: String, _ v: String) -> some View {
         HStack {
-            Text(k).font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+            Text(k).font(WFont.text(14)).foregroundColor(Theme.textSecondary)
             Spacer()
-            Text(v).font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+            Text(v).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
         }
     }
 }
@@ -290,23 +290,23 @@ struct AboutView: View {
         DetailScaffold(title: "Licences et crédits") {
             CardBox {
                 Text("Woop est une application indépendante et non officielle. Elle n'est ni affiliée, ni approuvée par WHOOP, Inc. « WHOOP » est une marque de son propriétaire, utilisée uniquement pour désigner le matériel compatible.")
-                    .font(.system(size: 13)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
             }
             CardBox(title: "Sources") {
                 Text("NOOP (ryanbr/noop) — Licence PolyForm Noncommercial 1.0.0. Required Notice: Copyright 2026 NoopApp. Recette de stadification du sommeil et score de récupération adaptés, pour un usage personnel non commercial.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
                 Text("OpenStrap edge / protocol / analytics — documentation du protocole WHOOP 5.0 (séquence d'appairage, enregistrements v18, acquittement de l'historique) et méthodes publiées utilisées pour l'effort et le coaching du sommeil.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
-                Text("Police Barlow Semi Condensed — SIL Open Font License 1.1.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
+                Text("Polices Barlow Semi Condensed, Montserrat et Figtree — SIL Open Font License 1.1.")
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
             }
             CardBox(title: "Méthodes publiées") {
                 Text("RMSSD (Task Force 1996), filtre de Malik, TRIMP de Banister (1991), réserve cardiaque de Karvonen, FC max de Tanaka (2001), dépense de Keytel (2005), métabolisme de Mifflin–St Jeor, VO₂max d'Uth (2004), arythmie sinusale respiratoire.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
             }
             CardBox {
                 Text("Woop n'est pas un dispositif médical. Toutes les mesures sont des estimations.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
+                    .font(WFont.text(12)).foregroundColor(Theme.textTertiary)
             }
         }
     }
@@ -345,7 +345,7 @@ struct OnboardingView: View {
             }
             Wordmark()
             Text("Ton WHOOP, sans abonnement.\nSommeil, récupération et effort calculés sur ton iPhone, sans compte ni cloud.")
-                .font(.system(size: 16)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                .font(WFont.text(16)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
             Spacer()
             OutlineButton(title: "Commencer") { step = 1 }
         }
@@ -355,7 +355,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Ton profil").font(WFont.title(30)).foregroundColor(.white).padding(.top, 20)
             Text("Utilisé pour la fréquence cardiaque maximale, les calories et ta récupération.")
-                .font(.system(size: 14)).foregroundColor(Theme.textSecondary)
+                .font(WFont.text(14)).foregroundColor(Theme.textSecondary)
             ScrollView {
                 VStack(spacing: 14) {
                     TextField("Prénom", text: $p.firstName)
@@ -388,7 +388,7 @@ struct OnboardingView: View {
             ScrollView { PairingCard() }
             if strap.state.isConnected {
                 Text("Connecté ! La première synchronisation de l'historique peut prendre quelques minutes.")
-                    .font(.system(size: 14)).foregroundColor(Theme.recoveryGreen)
+                    .font(WFont.text(14)).foregroundColor(Theme.recoveryGreen)
             }
             OutlineButton(title: strap.state.isConnected ? "Terminer" : "Plus tard") {
                 strap.stopScan()
@@ -401,7 +401,7 @@ struct OnboardingView: View {
                 app.settings.onboardingDone = true
                 app.setDemoMode(true)
             } label: {
-                Text("Découvrir avec des données de démo").wLabel(12, color: Theme.textSecondary, tracking: 1)
+                Text("Découvrir avec des données de démo").wLabel(12, color: Theme.textSecondary)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
