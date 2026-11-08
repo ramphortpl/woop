@@ -4,11 +4,11 @@ import SwiftUI
 struct ScoreRing: View {
     var progress: Double          // 0…1
     var color: Color
-    var lineWidth: CGFloat = 9
-    var size: CGFloat = 100
+    var lineWidth: CGFloat = 5.5
+    var size: CGFloat = 88
     var valueText: String
     var suffix: String = ""
-    var valueSize: CGFloat = 38
+    var valueSize: CGFloat = 31
 
     var body: some View {
         ZStack {
@@ -74,14 +74,14 @@ struct ActivityBadge: View {
     var color: Color
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon).font(.system(size: 22, weight: .semibold))
-            Text(value).font(WFont.number(25, weight: .bold))
+        HStack(spacing: 9) {
+            Image(systemName: icon).font(.system(size: 18, weight: .semibold))
+            Text(value).font(WFont.number(21, weight: .bold))
                 .minimumScaleFactor(0.7).lineLimit(1)
         }
         .foregroundColor(.white)
-        .frame(width: 108, height: 46)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(color))
+        .frame(width: 96, height: 40)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(color))
     }
 }
 
@@ -97,19 +97,19 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 14) {
             ActivityBadge(icon: icon, value: value, color: color)
-            Text(title).wLabel(14, weight: .bold).lineLimit(1).minimumScaleFactor(0.7)
+            Text(title).wLabel(13, weight: .bold, tracking: 1.5).lineLimit(1).minimumScaleFactor(0.7)
             Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 8) {
+            VStack(alignment: .trailing, spacing: 6) {
                 Text(start)
                 Text(end)
             }
-            .font(WFont.number(16, weight: .medium))
+            .font(WFont.number(14.5, weight: .medium))
             .foregroundColor(Theme.textSecondary)
-            RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 3, height: 34)
+            RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 2.5, height: 30)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.cardInner.opacity(0.55)))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardInner.opacity(0.55)))
     }
 }
 
@@ -121,13 +121,14 @@ struct CardButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 20, weight: .regular)).foregroundColor(.white)
-                Text(text).wLabel(12.5).multilineTextAlignment(.leading).lineSpacing(2)
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 18, weight: .regular)).foregroundColor(.white)
+                Text(text).wLabel(11, tracking: 1.2).multilineTextAlignment(.leading).lineSpacing(1)
+                    .lineLimit(2).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 62)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardInner.opacity(0.55)))
         }
         .buttonStyle(.plain)
@@ -319,7 +320,7 @@ struct SheetHeader: View {
 
     var body: some View {
         ZStack {
-            Text(title).wLabel(15, weight: .bold, tracking: 2.2).multilineTextAlignment(.center).padding(.horizontal, 56)
+            Text(title).wLabel(13.5, weight: .bold, tracking: 2.0).multilineTextAlignment(.center).lineSpacing(4).padding(.horizontal, 64)
             HStack {
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
@@ -340,9 +341,9 @@ struct OutlineButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title).wLabel(15, weight: .bold, color: Theme.accentBlue, tracking: 2.4)
-                .frame(maxWidth: .infinity, minHeight: 58)
-                .background(Capsule().fill(Color.black.opacity(0.25)))
+            Text(title).wLabel(14, weight: .bold, color: Theme.accentBlue, tracking: 2.4)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(Capsule().fill(Color(hex: 0x101317)))
                 .overlay(Capsule().stroke(Theme.accentBlue, lineWidth: 2))
         }
         .buttonStyle(.plain)

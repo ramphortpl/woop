@@ -81,7 +81,7 @@ struct SleepDetailView: View {
     var body: some View {
         let d = app.day(date) ?? .empty(date)
         DetailScaffold(title: "Sommeil", subtitle: Fmt.longDate(date)) {
-            ScoreRing(progress: (d.sleepPerformance ?? 0) / 100, color: Theme.sleep, lineWidth: 14, size: 190,
+            ScoreRing(progress: (d.sleepPerformance ?? 0) / 100, color: Theme.sleep, lineWidth: 10, size: 190,
                       valueText: d.sleepPerformance.map { "\(Int($0.rounded()))" } ?? "—", suffix: d.sleepPerformance == nil ? "" : "%", valueSize: 64)
                 .padding(.top, 8)
             Text("Performance du sommeil").wLabel(12, color: Theme.textSecondary)
@@ -175,7 +175,7 @@ struct RecoveryDetailView: View {
         let d = app.day(date) ?? .empty(date)
         let hist = app.history(upTo: DayKey.adding(-1, to: date), count: 30)
         DetailScaffold(title: "Récupération", subtitle: Fmt.longDate(date)) {
-            ScoreRing(progress: (d.recovery ?? 0) / 100, color: Theme.recoveryColor(d.recovery), lineWidth: 14, size: 190,
+            ScoreRing(progress: (d.recovery ?? 0) / 100, color: Theme.recoveryColor(d.recovery), lineWidth: 10, size: 190,
                       valueText: d.recovery.map { "\(Int($0.rounded()))" } ?? "—", suffix: d.recovery == nil ? "" : "%", valueSize: 64)
                 .padding(.top, 8)
             Text(zoneText(d)).font(.system(size: 15, weight: .medium)).foregroundColor(Theme.textSecondary)
@@ -252,7 +252,7 @@ struct StrainDetailView: View {
     var body: some View {
         let d = app.day(date) ?? .empty(date)
         DetailScaffold(title: "Effort", subtitle: Fmt.longDate(date)) {
-            ScoreRing(progress: (d.strain ?? 0) / 21, color: Theme.strain, lineWidth: 14, size: 190,
+            ScoreRing(progress: (d.strain ?? 0) / 21, color: Theme.strain, lineWidth: 10, size: 190,
                       valueText: d.strain.map { Fmt.dec1($0) } ?? "—", valueSize: 64)
                 .padding(.top, 8)
             if let target = StrainTarget.forRecovery(d.recovery) {

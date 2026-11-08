@@ -68,7 +68,7 @@ struct MoreView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .withAppRoutes()
-        .sheet(isPresented: $showCustomize) { DashboardCustomizeView() }
+        .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
     }
 
     private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {

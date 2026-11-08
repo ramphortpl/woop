@@ -30,20 +30,20 @@ struct HomeView: View {
                     rings.padding(.top, 22)
 
                     HStack {
-                        Text("Ma journée").font(WFont.title(30)).foregroundColor(.white)
+                        Text("Ma journée").font(.system(size: 26, weight: .medium)).foregroundColor(.white)
                         Spacer()
                         Menu {
                             Button { showAdd = true } label: { Label("Ajouter une activité", systemImage: "plus") }
                             Button { showStart = true } label: { Label("Commencer une activité", systemImage: "stopwatch") }
                             Button { showCustomize = true } label: { Label("Personnaliser le tableau de bord", systemImage: "slider.horizontal.3") }
                         } label: {
-                            Image(systemName: "plus").font(.system(size: 24, weight: .medium)).foregroundColor(.black)
-                                .frame(width: 54, height: 54)
-                                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white))
+                            Image(systemName: "plus").font(.system(size: 20, weight: .medium)).foregroundColor(.black)
+                                .frame(width: 38, height: 38)
+                                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white))
                         }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 36)
+                    .padding(.top, 30)
 
                     VStack(spacing: 18) {
                         NavigationLink(value: HomeRoute.outlook) { outlookRow }.buttonStyle(.plain)
@@ -64,7 +64,7 @@ struct HomeView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .withAppRoutes()
-        .sheet(isPresented: $showCustomize) { DashboardCustomizeView() }
+        .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
         .sheet(isPresented: $showAdd) { AddActivityView(date: app.selectedDate) }
         .sheet(isPresented: $showStart) { StartActivityView() }
         .sheet(isPresented: $showPlanner) { SleepPlannerView() }
@@ -95,11 +95,11 @@ struct HomeView: View {
     }
 
     private func ringLabel(_ title: String, progress: Double, color: Color, value: String, suffix: String, caption: String? = nil) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 11) {
             ScoreRing(progress: progress, color: color, valueText: value, suffix: suffix)
-            HStack(spacing: 4) {
-                Text(title).wLabel(12.5)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(.white)
+            HStack(spacing: 3) {
+                Text(title).wLabel(11.5, tracking: 1.3).lineLimit(1).minimumScaleFactor(0.7)
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundColor(.white)
             }
             if let caption { Text(caption).font(.system(size: 10, weight: .semibold)).foregroundColor(Theme.textSecondary) }
         }
@@ -109,15 +109,15 @@ struct HomeView: View {
 
     private var outlookRow: some View {
         HStack(spacing: 14) {
-            Image(systemName: "sun.max").font(.system(size: 22)).foregroundColor(.white)
+            Image(systemName: "sun.max").font(.system(size: 19)).foregroundColor(.white)
             let name = app.settings.profile.firstName
             Text(name.isEmpty ? "Perspectives quotidiennes" : "Perspectives quotidiennes de \(name)")
-                .font(.system(size: 17, weight: .medium)).foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.8)
-            Spacer()
-            Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: 16, weight: .regular)).foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.75)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.textSecondary)
         }
-        .padding(.horizontal, 18)
-        .frame(height: 64)
+        .padding(.horizontal, 16)
+        .frame(height: 50)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.cardGradient))
     }
 
@@ -231,7 +231,7 @@ struct HomeView: View {
     private var dashboard: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Mon tableau de bord").font(WFont.title(24)).foregroundColor(.white)
+                Text("Mon tableau de bord").font(.system(size: 22, weight: .medium)).foregroundColor(.white)
                 Spacer()
                 Button { showCustomize = true } label: {
                     Image(systemName: "slider.horizontal.3").font(.system(size: 18, weight: .semibold)).foregroundColor(Theme.textSecondary)
@@ -342,8 +342,8 @@ struct StrapGlyph: View {
 struct Wordmark: View {
     var body: some View {
         Text("WOOP")
-            .font(.system(size: 30, weight: .ultraLight, design: .default))
-            .tracking(4)
+            .font(.system(size: 24, weight: .light, design: .default))
+            .tracking(3.5)
             .foregroundColor(.white)
     }
 }

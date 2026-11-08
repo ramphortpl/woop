@@ -54,7 +54,7 @@ struct RootView: View {
                 }
                 .ignoresSafeArea(.keyboard)
                 .sheet(isPresented: $showCoach) { CoachView() }
-                .sheet(isPresented: $showCustomize) { DashboardCustomizeView() }
+                .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
                 .onAppear(perform: applyLaunchScreen)
             }
         }

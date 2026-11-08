@@ -44,7 +44,7 @@ struct ActivityDetailView: View {
         let a = d.activities.first { $0.id == activityID }
         DetailScaffold(title: a.map { Sport.label($0.sport) } ?? "Activité", subtitle: a.map { "\(Fmt.clock($0.start)) – \(Fmt.clock($0.end))" }) {
             if let a {
-                ScoreRing(progress: (a.strain ?? 0) / 21, color: Theme.strain, lineWidth: 14, size: 170,
+                ScoreRing(progress: (a.strain ?? 0) / 21, color: Theme.strain, lineWidth: 10, size: 170,
                           valueText: Fmt.dec1(a.strain), valueSize: 56)
                 Text("Effort de l'activité").wLabel(12, color: Theme.textSecondary)
                 TileGrid(tiles: [

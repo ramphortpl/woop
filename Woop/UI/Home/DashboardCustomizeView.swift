@@ -19,7 +19,7 @@ struct DashboardCustomizeView: View {
                 SheetHeader(title: "Personnaliser le tableau de bord") { dismiss() }
                 List {
                     Text("Mon tableau de bord")
-                        .font(WFont.title(30)).foregroundColor(.white)
+                        .font(.system(size: 25, weight: .regular)).foregroundColor(.white)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 22, leading: 20, bottom: 14, trailing: 20))
@@ -47,8 +47,8 @@ struct DashboardCustomizeView: View {
                             Button {
                                 withAnimation { selected.append(m) }
                             } label: {
-                                Image(systemName: "plus").font(.system(size: 26, weight: .regular)).foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
+                                Image(systemName: "plus").font(.system(size: 22, weight: .light)).foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
                             }
                             .buttonStyle(.borderless)
                         ))
@@ -64,8 +64,10 @@ struct DashboardCustomizeView: View {
                 .scrollContentBackground(.hidden)
                 .environment(\.editMode, .constant(.active))
             }
-            LinearGradient(colors: [Theme.bgBottom.opacity(0), Theme.bgBottom], startPoint: .top, endPoint: .bottom)
-                .frame(height: 130)
+            LinearGradient(stops: [.init(color: Theme.bgBottom.opacity(0), location: 0),
+                                   .init(color: Theme.bgBottom.opacity(0.95), location: 0.55),
+                                   .init(color: Theme.bgBottom, location: 1)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 150)
                 .allowsHitTesting(false)
             OutlineButton(title: "Enregistrer") {
                 app.settings.dashboard = selected
@@ -91,19 +93,19 @@ struct DashboardCustomizeView: View {
 
     private func row(_ m: DashboardMetric, trailing: AnyView?) -> some View {
         HStack(spacing: 16) {
-            Image(systemName: m.icon).font(.system(size: 21)).foregroundColor(Theme.textSecondary).frame(width: 30)
-            Text(m.title).wLabel(14.5, weight: .bold, tracking: 1.8).lineLimit(2).minimumScaleFactor(0.75)
+            Image(systemName: m.icon).font(.system(size: 18)).foregroundColor(Theme.textSecondary).frame(width: 26)
+            Text(m.title).wLabel(12.5, weight: .bold, tracking: 1.5).lineLimit(2).minimumScaleFactor(0.75)
             Spacer(minLength: 6)
             if m.isChart {
                 Image(systemName: "chart.bar").font(.system(size: 22)).foregroundColor(Theme.textSecondary)
             }
             if let trailing { trailing }
         }
-        .frame(minHeight: 70)
+        .frame(minHeight: 50)
         .listRowBackground(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Theme.cardGradient)
-                .padding(.vertical, 6)
+                .padding(.vertical, 5)
                 .padding(.horizontal, 16)
         )
         .listRowSeparator(.hidden)
