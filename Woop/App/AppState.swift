@@ -327,12 +327,12 @@ final class AppState: ObservableObject {
         rebuildMerged()
         computing = true
         analyticsQueue.async {
-            let samples = DemoData.generate(days: 21)
+            let samples = DemoData.generate(days: 14)
             Task { @MainActor in
                 self.demoSamples = samples
                 self.userActivities = []
                 self.computing = false
-                self.recompute(daysBack: 21)
+                self.recompute(daysBack: 14)
             }
         }
     }

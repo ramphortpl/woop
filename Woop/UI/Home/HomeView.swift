@@ -28,6 +28,7 @@ struct HomeView: View {
                             .padding(.top, 8)
                     }
                     Wordmark().padding(.top, 18)
+                    StatusLine().padding(.top, 6)
                     rings.padding(.top, 22)
 
                     HStack {
@@ -324,6 +325,34 @@ struct TopBar: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// Sync / computation status under the wordmark (empty when idle).
+struct StatusLine: View {
+    @EnvironmentObject var app: AppState
+    @EnvironmentObject var strap: StrapManager
+
+    var body: some View {
+        Group {
+            if strap.syncing {
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.7).tint(Theme.textSecondary)
+                    Text(strap.syncNewest.map { "Synchronisation… données jusqu'au \($0.formatted(date: .abbreviated, time: .shortened))" }
+                         ?? "Synchronisation du bracelet…")
+                }
+            } else if app.computing {
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.7).tint(Theme.textSecondary)
+                    Text("Calcul de tes scores…")
+                }
+            } else if case .failed = strap.state {
+                Text("Bracelet : \(strap.state.label)").lineLimit(1)
+            }
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(Theme.textSecondary)
+        .frame(height: 16)
     }
 }
 

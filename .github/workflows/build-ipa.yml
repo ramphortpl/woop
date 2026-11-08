@@ -129,7 +129,7 @@ jobs:
           mkdir -p shots
           for S in home dashboard customize sleep recovery strain health community more coach device; do
             xcrun simctl launch "$UDID" com.ramphortpl.woop -woopDemo -woopScreen "$S" > /dev/null
-            sleep 22
+            sleep 32
             xcrun simctl io "$UDID" screenshot "shots/$S.png"
             xcrun simctl terminate "$UDID" com.ramphortpl.woop || true
             sleep 1
