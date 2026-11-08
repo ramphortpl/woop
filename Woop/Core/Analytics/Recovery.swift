@@ -128,3 +128,15 @@ enum Fitness {
         return Stats.clamp(15.3 * maxHR / restingHR, 15, 90)
     }
 }
+
+/// Strain Coach target for the day, from the morning recovery (WHOOP-style bands).
+enum StrainTarget {
+    static func forRecovery(_ r: Double?) -> ClosedRange<Double>? {
+        guard let r else { return nil }
+        switch r {
+        case ..<34: return 4...9
+        case ..<67: return 9...13.5
+        default: return 13.5...18
+        }
+    }
+}

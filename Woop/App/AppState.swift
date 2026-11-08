@@ -16,6 +16,35 @@ struct AppSettings: Codable, Equatable {
     var continuousHR = false
     var stepCalibration = 1.0
     var rawRetentionDays = 120
+    var notify = NotifyPrefs()
+}
+
+extension AppSettings {
+    /// Every key is optional: settings saved by an older version keep the user's profile and
+    /// choices, and new options take their default.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings()
+        profile = (try? c.decodeIfPresent(UserProfile.self, forKey: .profile)) ?? d.profile
+        dashboard = (try? c.decodeIfPresent([DashboardMetric].self, forKey: .dashboard)) ?? d.dashboard
+        onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? d.onboardingDone
+        demoMode = (try? c.decodeIfPresent(Bool.self, forKey: .demoMode)) ?? d.demoMode
+        alarmEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .alarmEnabled)) ?? d.alarmEnabled
+        alarmMinute = (try? c.decodeIfPresent(Int.self, forKey: .alarmMinute)) ?? d.alarmMinute
+        backgroundSync = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundSync)) ?? d.backgroundSync
+        continuousHR = (try? c.decodeIfPresent(Bool.self, forKey: .continuousHR)) ?? d.continuousHR
+        stepCalibration = (try? c.decodeIfPresent(Double.self, forKey: .stepCalibration)) ?? d.stepCalibration
+        rawRetentionDays = (try? c.decodeIfPresent(Int.self, forKey: .rawRetentionDays)) ?? d.rawRetentionDays
+        notify = (try? c.decodeIfPresent(NotifyPrefs.self, forKey: .notify)) ?? d.notify
+    }
+}
+
+/// Where a tapped notification (or another screen) asks the app to go.
+enum DeepLink: Equatable {
+    case home
+    case route(day: String, HomeRoute)
+    case planner
+    case tab(MainTab)
 }
 
 /// Central app model: settings, computed days, recompute pipeline. Main-actor UI state; the
@@ -30,6 +59,14 @@ final class AppState: ObservableObject {
     @Published private(set) var computing = false
     @Published private(set) var userActivities: [ActivityRecord] = []
     @Published var liveSession: LiveSession?
+    @Published var importRunning = false
+    @Published var importStatusText: String?
+    @Published var importOutcome: ImportOutcome?
+    /// Result of the last import, also shown on the import screen.
+    @Published var lastImportMessage: String?
+    @Published var deepLink: DeepLink?
+    /// Activity whose sport picker opens on arrival (notification "Changer de sport").
+    @Published var pendingSportEdit: String?
 
     let strap = StrapManager.shared
     private let analyticsQueue = DispatchQueue(label: "woop.analytics", qos: .utility)
@@ -44,6 +81,7 @@ final class AppState: ObservableObject {
     private var pendingRecompute: Int?? = nil
     private var cancellables: Set<AnyCancellable> = []
     private var timer: Timer?
+    private var started = false
 
     private static let settingsKey = "woop.settings.v1"
 
@@ -68,6 +106,9 @@ final class AppState: ObservableObject {
     }()
 
     func start() {
+        guard !started else { return }
+        started = true
+        Self.prepareDropFolder()
         if ProcessInfo.processInfo.arguments.contains("-woopDemo") {
             if settings.profile.firstName.isEmpty {
                 settings.profile.firstName = "Paul-Louis"
@@ -92,8 +133,22 @@ final class AppState: ObservableObject {
         if settings.onboardingDone && !settings.demoMode {
             strap.start()
             strap.setBackgroundLive(settings.continuousHR)
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+            Notifier.shared.requestAuthorization()
         }
+        strap.$battery.combineLatest(strap.$charging)
+            .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level, charging in
+                Task { @MainActor in self?.evaluateBattery(level, charging: charging) }
+            }
+            .store(in: &cancellables)
+        strap.$lastSync
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.scheduleTimedNotifications() }
+            }
+            .store(in: &cancellables)
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.recompute(daysBack: 1) }
         }
@@ -247,7 +302,7 @@ final class AppState: ObservableObject {
                 self.computedDays = result
                 self.rebuildMerged()
                 self.computing = false
-                self.notifyRecoveryIfNeeded()
+                self.evaluateNotifications()
                 completion?()
                 self.runPendingRecompute()
             }
@@ -269,27 +324,133 @@ final class AppState: ObservableObject {
 
     // MARK: Notifications
 
-    /// Once per day, when this morning's recovery first becomes available, post it (like WHOOP).
-    func notifyRecoveryIfNeeded() {
-        guard !settings.demoMode, let d = days[today], let r = d.recovery, let s = d.sleep else { return }
-        let now = Int(Date().timeIntervalSince1970)
-        guard now - s.end < 8 * 3600 else { return }
-        let key = "woop.notified.recovery"
-        guard UserDefaults.standard.string(forKey: key) != today else { return }
-        UserDefaults.standard.set(today, forKey: key)
-        let content = UNMutableNotificationContent()
-        let zone: String
-        switch Recovery.zone(r) {
-        case .green: zone = "🟢 prêt pour un effort important"
-        case .yellow: zone = "🟡 un effort modéré est adapté"
-        case .red: zone = "🔴 privilégie la récupération"
+    private static let notifyLogKey = "woop.notify.log"
+
+    private func loadNotifyLog() -> NotifyLog {
+        guard let d = UserDefaults.standard.data(forKey: Self.notifyLogKey),
+              let l = try? JSONDecoder().decode(NotifyLog.self, from: d) else { return NotifyLog() }
+        return l
+    }
+
+    private func saveNotifyLog(_ l: NotifyLog) {
+        if let d = try? JSONEncoder().encode(l) { UserDefaults.standard.set(d, forKey: Self.notifyLogKey) }
+    }
+
+    /// After each rescoring: activity detected, morning recovery / sleep, Health Monitor,
+    /// Strain Coach (see NotificationPlanner), then the scheduled ones.
+    func evaluateNotifications() {
+        guard settings.onboardingDone, !settings.demoMode else { return }
+        let ctx = NotifyContext(days: days, today: today, now: Int(Date().timeIntervalSince1970),
+                                dataEnd: Database.shared.newestSampleTs(), firstName: settings.profile.firstName,
+                                prefs: settings.notify, bedtime: recommendedBedtime.map { Int($0.timeIntervalSince1970) })
+        var log = loadNotifyLog()
+        let list = NotificationPlanner.plan(ctx, log: &log)
+        saveNotifyLog(log)
+        for n in list { Notifier.shared.post(n) }
+        scheduleTimedNotifications()
+    }
+
+    private func evaluateBattery(_ level: Double?, charging: Bool) {
+        guard let level, settings.onboardingDone, !settings.demoMode else { return }
+        var log = loadNotifyLog()
+        let n = NotificationPlanner.battery(level: level, charging: charging, prefs: settings.notify, log: &log)
+        saveNotifyLog(log)
+        if let n { Notifier.shared.post(n) }
+    }
+
+    /// Bedtime reminder, Monday summary and the "not synced for 10 h" reminder are scheduled
+    /// ahead, so they arrive even if iOS keeps Woop asleep.
+    func scheduleTimedNotifications() {
+        let n = Notifier.shared
+        guard settings.onboardingDone, !settings.demoMode else {
+            n.cancel(["bedtime", "weekly", "sync-reminder"])
+            return
         }
-        content.title = "Récupération : \(Int(r)) %"
-        var body = zone
-        if let p = d.sleepPerformance { body += " · Sommeil \(Int(p)) %" }
-        content.body = body
-        content.sound = .default
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "recovery-\(today)", content: content, trigger: nil))
+        let p = settings.notify
+        let now = Date()
+        if p.bedtime, let bed = recommendedBedtime {
+            var fire = bed.addingTimeInterval(-Double(p.bedtimeLeadMinutes * 60))
+            while fire < now.addingTimeInterval(60) { fire = fire.addingTimeInterval(86400) }
+            let need = days[today]?.tonightNeedSec
+            n.schedule(NotificationPlanner.bedtime(bedtime: Int(fire.timeIntervalSince1970) + p.bedtimeLeadMinutes * 60, needSec: need), at: fire)
+        } else {
+            n.cancel(["bedtime"])
+        }
+        if p.weekly {
+            let cal = DayKey.calendar
+            let todayStart = cal.startOfDay(for: now)
+            let weekday = cal.component(.weekday, from: now) // 2 = Monday
+            var monday = cal.date(byAdding: .day, value: (9 - weekday) % 7, to: todayStart) ?? todayStart
+            var fire = cal.date(bySettingHour: 9, minute: 0, second: 0, of: monday) ?? monday
+            if fire <= now {
+                monday = cal.date(byAdding: .day, value: 7, to: monday) ?? monday
+                fire = cal.date(byAdding: .day, value: 7, to: fire) ?? fire
+            }
+            let mondayKey = DayKey.key(monday)
+            // The week is complete only on the Monday itself (before 9:00).
+            let summary = mondayKey == today ? NotificationPlanner.weekly(days: days, monday: mondayKey) : nil
+            n.schedule(summary ?? NotificationPlanner.weeklyGeneric(), at: fire)
+        } else {
+            n.cancel(["weekly"])
+        }
+        if p.syncReminder, strap.pairedID != nil {
+            var fire = (strap.lastSync ?? now).addingTimeInterval(NotificationPlanner.syncReminderDelay)
+            if fire < now.addingTimeInterval(60) { fire = now.addingTimeInterval(NotificationPlanner.syncReminderDelay) }
+            let h = DayKey.calendar.component(.hour, from: fire)
+            if h >= 23 || h < 8 {
+                // Not at night: the next morning at 8:15.
+                var morning = DayKey.calendar.date(bySettingHour: 8, minute: 15, second: 0, of: fire) ?? fire
+                if morning < fire { morning = DayKey.calendar.date(byAdding: .day, value: 1, to: morning) ?? morning }
+                fire = morning
+            }
+            n.schedule(NotificationPlanner.syncReminder(), at: fire)
+        } else {
+            n.cancel(["sync-reminder"])
+        }
+    }
+
+    /// "Envoyer une notification de test": the latest activity (or an example), 5 s later.
+    func sendTestNotification() {
+        let latest = days.values.sorted { $0.date > $1.date }.first { !$0.activities.isEmpty }
+        var p: PlannedNotification
+        if let d = latest, let a = d.activities.last {
+            p = NotificationPlanner.activity(a, day: d.date)
+        } else {
+            var a = ActivityRecord(id: "test", sport: "course", start: Int(Date().timeIntervalSince1970) - 2700,
+                                   end: Int(Date().timeIntervalSince1970) - 300, source: .auto)
+            a.strain = 11.4
+            a.calories = 612
+            a.avgHR = 151
+            p = NotificationPlanner.activity(a, day: today)
+        }
+        p.id = "test-\(Int(Date().timeIntervalSince1970))"
+        Notifier.shared.post(p, after: 5)
+    }
+
+    /// A tapped notification (or one of its buttons).
+    func handleNotification(route: String, action: String) {
+        let parts = route.split(separator: ":", maxSplits: 2).map(String.init)
+        guard let kind = parts.first else { return }
+        let day = parts.count > 1 ? parts[1] : today
+        switch kind {
+        case "activity":
+            let id = parts.count > 2 ? parts[2] : ""
+            if action == Notifier.actionConfirm {
+                if let d = days[day], let a = ActivityDetailView.find(id, in: d) { confirmActivity(a, sport: a.sport) }
+                return
+            }
+            if action == Notifier.actionChange { pendingSportEdit = id }
+            deepLink = .route(day: day, .activity(id))
+        case "activities": deepLink = .route(day: day, .activities)
+        case "recovery": deepLink = .route(day: day, .recovery)
+        case "sleep": deepLink = .route(day: day, .sleep)
+        case "strain": deepLink = .route(day: day, .strain)
+        case "device": deepLink = .route(day: today, .device)
+        case "planner": deepLink = .planner
+        case "health": deepLink = .tab(.health)
+        case "community": deepLink = .tab(.community)
+        default: deepLink = .home
+        }
     }
 
     // MARK: Background refresh
@@ -305,8 +466,13 @@ final class AppState: ObservableObject {
 
     /// Runs inside iOS's background refresh window: sync the strap, then rescore today.
     func backgroundRefresh() async {
+        start()
         scheduleBackgroundRefresh()
-        _ = await strap.syncAndWait(timeout: 22)
+        // After a relaunch the strap needs a few seconds to reconnect and finish its handshake.
+        for _ in 0..<12 where strap.pairedID != nil && strap.state != .connected {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        _ = await strap.syncAndWait(timeout: 16)
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             recompute(daysBack: 2) { cont.resume() }
         }
@@ -354,6 +520,39 @@ final class AppState: ObservableObject {
         if !settings.demoMode { Database.shared.deleteActivity(id: a.id) }
         userActivities.removeAll { $0.id == a.id }
         recompute(daysBack: 2)
+    }
+
+    /// Confirm an activity with a sport (auto-detected ones become saved activities; others are
+    /// retyped in place, including imported WHOOP workouts).
+    func confirmActivity(_ a: ActivityRecord, sport: String) {
+        var n = a
+        n.sport = sport
+        if a.source == .auto {
+            n.id = "manual-\(a.start)"
+            n.source = .manual
+        }
+        if !settings.demoMode {
+            if n.id != a.id { Database.shared.deleteActivity(id: a.id) }
+            Database.shared.saveActivity(n)
+        }
+        userActivities.removeAll { $0.id == a.id || $0.id == n.id }
+        userActivities.append(n)
+        if a.source == .imported {
+            for (k, var d) in importedDays where d.activities.contains(where: { $0.id == a.id }) {
+                d.activities = d.activities.map { $0.id == a.id ? n : $0 }
+                importedDays[k] = d
+                if !settings.demoMode { Database.shared.saveImportedDays([d]) }
+            }
+            rebuildMerged()
+        }
+        // Show the new type right away, then rescore.
+        for (k, var d) in computedDays where d.activities.contains(where: { $0.id == a.id }) {
+            d.activities = d.activities.map { $0.id == a.id ? n : $0 }
+            computedDays[k] = d
+        }
+        rebuildMerged()
+        let back = max(2, (DayKey.startUnix(today).map { ($0 - a.start) / 86400 + 2 } ?? 2))
+        recompute(daysBack: min(back, 45))
     }
 
     // MARK: Live activity session

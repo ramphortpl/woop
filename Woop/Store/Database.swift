@@ -181,6 +181,16 @@ final class Database {
     }
 
     /// Newest second that came from the strap's history (not the live stream).
+    /// Newest sample of any source (MAX on the primary key: instant).
+    func newestSampleTs() -> Int? {
+        queue.sync {
+            guard let st = prepare("SELECT MAX(ts) FROM sample") else { return nil }
+            defer { sqlite3_finalize(st) }
+            guard sqlite3_step(st) == SQLITE_ROW, sqlite3_column_type(st, 0) != SQLITE_NULL else { return nil }
+            return Int(sqlite3_column_int64(st, 0))
+        }
+    }
+
     func newestHistoryTs() -> Int? {
         queue.sync {
             guard let st = prepare("SELECT MAX(ts) FROM sample WHERE src = 0") else { return nil }

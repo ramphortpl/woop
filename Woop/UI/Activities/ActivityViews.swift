@@ -19,7 +19,7 @@ struct ActivitiesListView: View {
             }
             ForEach(d.activities) { a in
                 NavigationLink(value: HomeRoute.activity(a.id)) {
-                    ActivityRow(icon: Sport.icon(a.sport), value: Fmt.dec1(a.strain), title: Sport.label(a.sport),
+                    ActivityRow(icon: Sport.icon(a.sport), value: Fmt.dec1(a.strain), title: Sport.name(a),
                                 start: Fmt.clock(a.start), end: Fmt.clock(a.end), color: Theme.strainBadge)
                 }.buttonStyle(.plain)
             }
@@ -41,8 +41,8 @@ struct ActivityDetailView: View {
 
     var body: some View {
         let d = app.day(date) ?? .empty(date)
-        let a = d.activities.first { $0.id == activityID }
-        DetailScaffold(title: a.map { Sport.label($0.sport) } ?? "Activité", subtitle: a.map { "\(Fmt.clock($0.start)) – \(Fmt.clock($0.end))" }) {
+        let a = Self.find(activityID, in: d)
+        DetailScaffold(title: a.map { Sport.name($0) } ?? "Activité", subtitle: a.map { "\(Fmt.clock($0.start)) – \(Fmt.clock($0.end))" }) {
             if let a {
                 ScoreRing(progress: (a.strain ?? 0) / 21, color: Theme.strain, lineWidth: 10, size: 170,
                           valueText: Fmt.dec1(a.strain), valueSize: 56)
@@ -56,13 +56,24 @@ struct ActivityDetailView: View {
                 CardBox(title: "Zones de fréquence cardiaque") { ZoneBars(seconds: a.zoneSeconds) }
                 CardBox {
                     Button { showType = true } label: {
-                        HStack {
+                        HStack(spacing: 10) {
                             Text("Type d'activité").wLabel(12.5)
                             Spacer()
-                            Text(Sport.label(a.sport)).foregroundColor(Theme.textSecondary)
+                            Image(systemName: Sport.icon(a.sport)).foregroundColor(Theme.textSecondary)
+                            Text(Sport.name(a)).foregroundColor(Theme.textSecondary).lineLimit(1)
                             Image(systemName: "chevron.right").foregroundColor(Theme.textTertiary)
                         }
                     }.buttonStyle(.plain)
+                    if a.source == .auto {
+                        Divider().overlay(Theme.separator)
+                        Button { app.confirmActivity(a, sport: a.sport) } label: {
+                            HStack {
+                                Text("Confirmer l'activité").wLabel(12.5, color: Theme.recoveryGreen)
+                                Spacer()
+                                Image(systemName: "checkmark.circle").foregroundColor(Theme.recoveryGreen)
+                            }
+                        }.buttonStyle(.plain)
+                    }
                     if a.source != .auto {
                         Divider().overlay(Theme.separator)
                         Button(role: .destructive) {
@@ -73,30 +84,40 @@ struct ActivityDetailView: View {
                         }.buttonStyle(.plain)
                     }
                 }
-                .confirmationDialog("Type d'activité", isPresented: $showType) {
-                    ForEach(Sport.allCases) { s in
-                        Button(s.label) { retype(a, s) }
-                    }
-                }
-                Text(a.source == .auto ? "Activité détectée automatiquement." : (a.source == .live ? "Activité enregistrée en direct." : "Activité ajoutée manuellement."))
+                Text(sourceText(a))
                     .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
             } else {
                 CardBox { Text("Activité introuvable.").foregroundColor(Theme.textSecondary) }
             }
         }
+        .sheet(isPresented: $showType) {
+            if let a {
+                SportPickerView(selected: a.sport) { app.confirmActivity(a, sport: $0) }
+            }
+        }
+        .onAppear {
+            if let pending = app.pendingSportEdit, pending == activityID || a?.id == pending {
+                app.pendingSportEdit = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showType = true }
+            }
+        }
     }
 
-    /// Changing the type of an auto-detected activity turns it into a saved manual one.
-    private func retype(_ a: ActivityRecord, _ s: Sport) {
-        var n = a
-        n.sport = s.rawValue
-        if n.source == .auto {
-            n.id = "manual-\(a.start)"
-            n.source = .manual
-        } else {
-            app.deleteActivity(a)
+    private func sourceText(_ a: ActivityRecord) -> String {
+        switch a.source {
+        case .auto: return "Activité détectée automatiquement. Choisis le sport pour la garder telle quelle."
+        case .live: return "Activité enregistrée en direct."
+        case .manual: return "Activité ajoutée ou confirmée par toi."
+        case .imported: return "Activité importée depuis WHOOP."
         }
-        app.addActivity(n)
+    }
+
+    /// By id; else the activity starting closest to the time in the id (auto-detected activities
+    /// can shift by a minute once more data arrives, e.g. when opened from a notification).
+    static func find(_ id: String, in d: DayMetrics) -> ActivityRecord? {
+        if let a = d.activities.first(where: { $0.id == id }) { return a }
+        guard let ts = id.split(separator: "-").last.flatMap({ Int($0) }) else { return nil }
+        return d.activities.filter { abs($0.start - ts) <= 20 * 60 }.min { abs($0.start - ts) < abs($1.start - ts) }
     }
 }
 
@@ -104,7 +125,7 @@ struct AddActivityView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.dismiss) private var dismiss
     var date: String
-    @State private var sport: Sport = .course
+    @State private var sport: String = SportRecents.keys.first ?? "course"
     @State private var start = Date().addingTimeInterval(-3600)
     @State private var end = Date()
 
@@ -115,27 +136,13 @@ struct AddActivityView: View {
                 SheetHeader(title: "Ajouter une activité") { dismiss() }
                 ScrollView {
                     VStack(spacing: 16) {
-                        CardBox(title: "Type") {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                                ForEach(Sport.allCases) { s in
-                                    Button { sport = s } label: {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: s.icon).font(.system(size: 22))
-                                            Text(s.label).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                                        }
-                                        .foregroundColor(sport == s ? .black : .white)
-                                        .frame(maxWidth: .infinity, minHeight: 70)
-                                        .background(RoundedRectangle(cornerRadius: 12).fill(sport == s ? Color.white : Theme.cardInner.opacity(0.6)))
-                                    }.buttonStyle(.plain)
-                                }
-                            }
-                        }
+                        CardBox(title: "Activité") { SportChooser(sport: $sport) }
                         CardBox(title: "Horaires") {
                             DatePicker("Début", selection: $start, in: ...Date())
                             DatePicker("Fin", selection: $end, in: start...Date())
                         }
                         .tint(Theme.accentBlue)
-                        Text("L'effort, les calories et les zones sont calculés à partir de la fréquence cardiaque enregistrée par ton bracelet pendant ce créneau.")
+                        Text("L'effort, les calories et les zones sont calculés à partir de la fréquence cardiaque enregistrée par ton bracelet pendant ce créneau (sinon, les calories sont estimées selon l'activité et ton poids).")
                             .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
                     }
                     .padding(16)
@@ -144,7 +151,8 @@ struct AddActivityView: View {
             }
             OutlineButton(title: "Enregistrer") {
                 let s = Int(start.timeIntervalSince1970), e = Int(max(end, start.addingTimeInterval(60)).timeIntervalSince1970)
-                app.addActivity(ActivityRecord(id: "manual-\(s)", sport: sport.rawValue, start: s, end: e, source: .manual))
+                SportRecents.add(sport)
+                app.addActivity(ActivityRecord(id: "manual-\(s)", sport: sport, start: s, end: e, source: .manual))
                 dismiss()
             }
             .padding(.horizontal, 44).padding(.bottom, 24)
@@ -157,7 +165,7 @@ struct StartActivityView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var strap: StrapManager
     @Environment(\.dismiss) private var dismiss
-    @State private var sport: Sport = .course
+    @State private var sport: String = SportRecents.keys.first ?? "course"
     @State private var now = Date()
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -198,27 +206,16 @@ struct StartActivityView: View {
                     .padding(.horizontal, 24).padding(.bottom, 30)
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                            ForEach(Sport.allCases) { s in
-                                Button { sport = s } label: {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: s.icon).font(.system(size: 24))
-                                        Text(s.label).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                                    }
-                                    .foregroundColor(sport == s ? .black : .white)
-                                    .frame(maxWidth: .infinity, minHeight: 78)
-                                    .background(RoundedRectangle(cornerRadius: 12).fill(sport == s ? Color.white : Theme.cardInner.opacity(0.6)))
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                        .padding(16)
-                        .padding(.bottom, 120)
+                        CardBox(title: "Activité") { SportChooser(sport: $sport) }
+                            .padding(16)
+                            .padding(.bottom, 120)
                     }
                 }
             }
             if app.liveSession == nil {
                 OutlineButton(title: "Démarrer") {
-                    app.startLiveSession(sport: sport.rawValue)
+                    SportRecents.add(sport)
+                    app.startLiveSession(sport: sport)
                 }
                 .padding(.horizontal, 44).padding(.bottom, 24)
             }

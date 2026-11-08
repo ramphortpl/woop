@@ -1,10 +1,12 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct MoreView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var strap: StrapManager
+    @ObservedObject private var notifier = Notifier.shared
     @State private var showCustomize = false
+    @State private var showNotifications = false
+    @State private var showImport = false
 
     var body: some View {
         ZStack {
@@ -40,6 +42,9 @@ struct MoreView: View {
                     group("Appareil") {
                         link("Mon bracelet", "applewatch.side.right", detail: strap.state.label) { DeviceView() }
                     }
+                    group("Notifications") {
+                        link("Notifications", "bell.badge", detail: notifier.status == .denied ? "Désactivées" : nil) { NotificationSettingsView() }
+                    }
                     group("Sommeil") {
                         link("Besoin de sommeil de base", "moon", detail: Fmt.hmLong(app.settings.profile.baselineSleepNeedHours * 3600)) { SleepSettingsView() }
                     }
@@ -49,6 +54,8 @@ struct MoreView: View {
                         }.buttonStyle(.plain)
                     }
                     group("Données") {
+                        link("Importer depuis WHOOP", "square.and.arrow.down", detail: app.importedDays.isEmpty ? nil : "\(app.importedDays.count) j") { WhoopImportView() }
+                        Divider().overlay(Theme.separator)
                         link("Données et stockage", "externaldrive", detail: nil) { DataSettingsView() }
                         Divider().overlay(Theme.separator)
                         Toggle(isOn: Binding(get: { app.settings.demoMode }, set: { app.setDemoMode($0) })) {
@@ -69,6 +76,16 @@ struct MoreView: View {
         .toolbar(.hidden, for: .navigationBar)
         .withAppRoutes()
         .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
+        .navigationDestination(isPresented: $showNotifications) { NotificationSettingsView() }
+        .navigationDestination(isPresented: $showImport) { WhoopImportView() }
+        .onAppear {
+            // CI screenshots (-woopScreen).
+            switch app.launchScreen {
+            case "notifications": if !showNotifications { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showNotifications = true } }
+            case "import": if !showImport { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showImport = true } }
+            default: break
+            }
+        }
     }
 
     private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -195,8 +212,6 @@ struct DataSettingsView: View {
     @State private var size: Int64 = 0
     @State private var confirmWipe = false
     @State private var calibration = 1.0
-    @State private var showImporter = false
-    @State private var importMessage: String?
 
     var body: some View {
         DetailScaffold(title: "Données et stockage") {
@@ -208,15 +223,19 @@ struct DataSettingsView: View {
                 row("Taille de la base", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
             }
             CardBox(title: "Importer depuis WHOOP") {
-                Text("Dans l'app WHOOP : Plus › Paramètres › Exporter les données. Tu reçois un e-mail avec un fichier .zip : enregistre-le dans Fichiers puis sélectionne-le ici. Tes jours passés affichent alors exactement les scores WHOOP et tes moyennes de référence sont calibrées immédiatement.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button { showImporter = true } label: {
-                    Text("Choisir l'export (.zip ou CSV)").wLabel(12.5, color: Theme.accentBlue)
-                }.buttonStyle(.plain)
-                if !app.importedDays.isEmpty {
-                    Text("\(app.importedDays.count) jours WHOOP importés").font(.system(size: 12)).foregroundColor(Theme.recoveryGreen)
+                NavigationLink { WhoopImportView() } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Importer mon export WHOOP").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+                            Text(app.importedDays.isEmpty ? "Scores WHOOP exacts pour tes jours passés" : "\(app.importedDays.count) jours WHOOP importés")
+                                .font(.system(size: 12)).foregroundColor(app.importedDays.isEmpty ? Theme.textTertiary : Theme.recoveryGreen)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundColor(Theme.textTertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
             CardBox(title: "Calibrage des pas") {
                 Stepper("Diviseur : \(Fmt.dec1(calibration))×", value: $calibration, in: 0.5...30, step: 0.1).foregroundColor(.white)
@@ -240,22 +259,6 @@ struct DataSettingsView: View {
             }
         }
         .onAppear(perform: refresh)
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.zip, .commaSeparatedText, .folder],
-                      allowsMultipleSelection: true) { result in
-            switch result {
-            case .success(let urls):
-                let s = app.importWhoopExport(urls: urls)
-                importMessage = s.days == 0 && s.workouts == 0
-                    ? "Aucune donnée WHOOP reconnue dans \(s.files) fichier(s)."
-                    : "\(s.days) jours et \(s.workouts) entraînements importés."
-                refresh()
-            case .failure(let e):
-                importMessage = "Import impossible : \(e.localizedDescription)"
-            }
-        }
-        .alert(importMessage ?? "", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
-            Button("OK", role: .cancel) { importMessage = nil }
-        }
         .confirmationDialog("Supprimer toutes les données ?", isPresented: $confirmWipe, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 Database.shared.wipeAll()

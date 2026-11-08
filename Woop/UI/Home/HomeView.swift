@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var showAdd = false
     @State private var showStart = false
     @State private var showPlanner = false
+    @State private var showSports = false
 
     var day: DayMetrics { app.selected }
 
@@ -64,8 +65,14 @@ struct HomeView: View {
                 app.recompute(daysBack: 2)
             }
             .onAppear {
-                if app.launchScreen == "dashboard" {
+                switch app.launchScreen {
+                case "dashboard":
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { proxy.scrollTo("dashboard", anchor: .top) }
+                case "activity":
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showStart = true }
+                case "sports":
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showSports = true }
+                default: break
                 }
             }
             }
@@ -76,6 +83,7 @@ struct HomeView: View {
         .sheet(isPresented: $showAdd) { AddActivityView(date: app.selectedDate) }
         .sheet(isPresented: $showStart) { StartActivityView() }
         .sheet(isPresented: $showPlanner) { SleepPlannerView() }
+        .sheet(isPresented: $showSports) { SportPickerView(selected: "padel") { _ in } }
     }
 
     // MARK: Rings
@@ -191,7 +199,7 @@ struct HomeView: View {
                                     start: n.start, end: n.end, color: Theme.sleepBadge, route: .sleep))
         }
         for a in day.activities {
-            out.append(TimelineItem(id: a.id, icon: Sport.icon(a.sport), value: Fmt.dec1(a.strain), title: Sport.label(a.sport),
+            out.append(TimelineItem(id: a.id, icon: Sport.icon(a.sport), value: Fmt.dec1(a.strain), title: Sport.name(a),
                                     start: a.start, end: a.end, color: Theme.strainBadge, route: .activity(a.id)))
         }
         return out.sorted { $0.start < $1.start }

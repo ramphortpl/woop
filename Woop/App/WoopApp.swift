@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct WoopApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var app = AppState.shared
     @StateObject private var strap = StrapManager.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -14,10 +15,16 @@ struct WoopApp: App {
                 .preferredColorScheme(.dark)
                 .environment(\.locale, Locale(identifier: "fr_FR"))
                 .onAppear { app.start() }
+                // "Partager › Woop" / "Ouvrir avec Woop" on the WHOOP export.
+                .onOpenURL { url in app.handleOpenedFile(url) }
         }
         .onChange(of: scenePhase) { phase in
             strap.setForeground(phase == .active)
-            if phase == .active { app.recompute(daysBack: 2) }
+            if phase == .active {
+                app.recompute(daysBack: 2)
+                app.importDropFolderIfNeeded()
+                Notifier.shared.refreshStatus()
+            }
             if phase == .background { app.scheduleBackgroundRefresh() }
         }
         .backgroundTask(.appRefresh(AppState.refreshTaskID)) {
@@ -54,14 +61,46 @@ struct RootView: View {
                 }
                 .ignoresSafeArea(.keyboard)
                 .sheet(isPresented: $showCoach) { CoachView() }
+                .sheet(isPresented: $showPlanner) { SleepPlannerView() }
                 .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
-                .onAppear(perform: applyLaunchScreen)
+                .onAppear {
+                    applyLaunchScreen()
+                    open(app.deepLink)
+                }
+                .onChange(of: app.deepLink) { open($0) }
             }
+        }
+        .alert(item: $app.importOutcome) { o in
+            Alert(title: Text(o.title), message: Text(o.message), dismissButton: .default(Text("OK")))
         }
     }
 
     @State private var showCustomize = false
+    @State private var showPlanner = false
     @State private var homePath: [HomeRoute] = []
+
+    /// Go where a tapped notification points.
+    private func open(_ link: DeepLink?) {
+        guard let link else { return }
+        app.deepLink = nil
+        showCoach = false
+        showCustomize = false
+        switch link {
+        case .home:
+            tab = .home
+            homePath = []
+        case let .route(day, route):
+            tab = .home
+            app.selectedDate = day
+            homePath = [route]
+        case .planner:
+            tab = .home
+            homePath = []
+            showPlanner = true
+        case .tab(let t):
+            tab = t
+        }
+    }
 
     /// `-woopScreen` launch argument: open a given screen directly (used for CI screenshots).
     private func applyLaunchScreen() {
@@ -75,6 +114,7 @@ struct RootView: View {
         case "recovery": homePath = [.recovery]
         case "strain": homePath = [.strain]
         case "device": homePath = [.device]
+        case "notifications", "import": tab = .more
         default: break
         }
     }

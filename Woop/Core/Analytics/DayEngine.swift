@@ -326,7 +326,14 @@ enum DayEngine {
         var r = a
         let slice = TimeIndex.slice(samples, from: a.start, to: a.end)
         let hr = slice.filter { $0.hr > 0 }
-        guard hr.count >= 30 else { return r }
+        guard hr.count >= 30 else {
+            // No heart rate for this window (strap not worn): estimate calories from the
+            // activity's MET value and body weight, as a gross figure.
+            if a.source != .auto, let met = SportCatalog.info(a.sport)?.met {
+                r.calories = (met * profile.weightKg * Double(a.durationSec) / 3600).rounded()
+            }
+            return r
+        }
         var acc = Strain.Accumulator(rest: rest, maxHR: maxHR, quietHRR: quiet, female: profile.sex == .female)
         var zones = Array(repeating: 0, count: 6)
         var minute = slice.first?.ts ?? a.start

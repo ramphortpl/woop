@@ -83,6 +83,20 @@ jobs:
             --target "$GITHUB_SHA" --title "Woop iOS — dernière version (${VER} build ${GITHUB_RUN_NUMBER})" \
             --notes "$NOTES" --latest
 
+  core-tests:
+    # The platform-independent core (protocol, analytics, zip/CSV import, notifications) on macOS.
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: |
+          for XC in /Applications/Xcode_16.4.app /Applications/Xcode_26.2.app; do
+            if [ -d "$XC" ]; then sudo xcode-select -s "$XC"; break; fi
+          done
+      - name: swift test
+        run: swift test 2>&1 | tail -30
+
   screenshots:
     # Renders the app in the iOS Simulator (demo data) and publishes PNGs to the rolling
     # "screenshots" release, to check the interface against the WHOOP app.
@@ -127,14 +141,37 @@ jobs:
           APP=$(find build/sim/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
           xcrun simctl install "$UDID" "$APP"
           mkdir -p shots
-          for S in home dashboard customize sleep recovery strain health community more coach device; do
+          for S in home dashboard customize sleep recovery strain health community more coach device notifications import activity sports; do
             xcrun simctl launch "$UDID" com.ramphortpl.woop -woopDemo -woopScreen "$S" > /dev/null
-            sleep 32
+            sleep 26
             xcrun simctl io "$UDID" screenshot "shots/$S.png"
             xcrun simctl terminate "$UDID" com.ramphortpl.woop || true
             sleep 1
           done
           ls -la shots
+
+      - name: End-to-end WHOOP import (zip dropped in the app's Files folder)
+        run: |
+          APP=$(find build/sim/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          # Fresh install: no demo mode, no data.
+          xcrun simctl uninstall "$UDID" com.ramphortpl.woop || true
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" com.ramphortpl.woop > /dev/null
+          sleep 8
+          xcrun simctl terminate "$UDID" com.ramphortpl.woop || true
+          DATA=$(xcrun simctl get_app_container "$UDID" com.ramphortpl.woop data)
+          ls -la "$DATA/Documents" || true
+          python3 Tools/make_zip_fixtures.py --zip "$DATA/Documents/my_whoop_data_2026_11_08.zip"
+          xcrun simctl launch "$UDID" com.ramphortpl.woop > /dev/null
+          sleep 15
+          xcrun simctl io "$UDID" screenshot "shots/import-result.png"
+          echo "--- Documents after import ---"
+          find "$DATA/Documents" -maxdepth 2 | sed "s|$DATA/||"
+          test -f "$DATA/Documents/Importés/my_whoop_data_2026_11_08.zip" && echo "IMPORT: file moved to Importés"
+          SQL=$(find "$DATA/Library/Application Support" -name 'woop.sqlite' | head -1)
+          echo "imported days: $(sqlite3 "$SQL" 'SELECT COUNT(*) FROM imported_day')"
+          echo "activities: $(sqlite3 "$SQL" "SELECT id, json_extract(json, '$.sport') FROM activity")"
+          test "$(sqlite3 "$SQL" 'SELECT COUNT(*) FROM imported_day')" -ge 2
 
       - uses: actions/upload-artifact@v4
         with:

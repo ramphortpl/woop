@@ -284,7 +284,7 @@ struct StrainDetailView: View {
                                 Image(systemName: Sport.icon(a.sport)).font(.system(size: 18)).foregroundColor(.white)
                                     .frame(width: 38, height: 38).background(Circle().fill(Theme.strainBadge))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(Sport.label(a.sport)).wLabel(12.5)
+                                    Text(Sport.name(a)).wLabel(12.5)
                                     Text("\(Fmt.clock(a.start)) – \(Fmt.clock(a.end)) · \(Fmt.hmLong(Double(a.durationSec)))")
                                         .font(.system(size: 12)).foregroundColor(Theme.textTertiary)
                                 }
@@ -309,18 +309,6 @@ struct StrainDetailView: View {
             }
             Text("L'effort mesure ta charge cardiovasculaire de 0 à 21 (échelle logarithmique), à partir du temps passé au-dessus de ton niveau de repos éveillé.")
                 .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
-        }
-    }
-}
-
-/// Recommended strain band from recovery (a range, never an instruction).
-enum StrainTarget {
-    static func forRecovery(_ r: Double?) -> ClosedRange<Double>? {
-        guard let r else { return nil }
-        switch r {
-        case ..<34: return 4...9
-        case ..<67: return 9...13.5
-        default: return 13.5...18
         }
     }
 }

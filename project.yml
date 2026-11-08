@@ -42,6 +42,15 @@ targets:
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [bluetooth-central, fetch]
+        # "Partager › Woop" / "Ouvrir avec Woop" for the WHOOP export (.zip / .csv), and a
+        # Woop folder in Fichiers (Sur mon iPhone) where an export can be dropped.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: "Export WHOOP"
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.zip-archive, com.pkware.zip-archive, public.comma-separated-values-text]
+        LSSupportsOpeningDocumentsInPlace: true
+        UIFileSharingEnabled: true
         BGTaskSchedulerPermittedIdentifiers: [com.ramphortpl.woop.refresh]
         UIAppFonts:
           - BarlowSemiCondensed-Medium.ttf

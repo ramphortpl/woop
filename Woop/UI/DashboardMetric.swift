@@ -116,7 +116,7 @@ enum DashboardMetric: String, Codable, CaseIterable, Identifiable {
         case .dailyStrain: return day.strain
         case .weight: return p.weightKg
         case .leanMass: return p.leanBodyMass
-        case .strengthTime: return weeklySport(day, state, ["musculation", "crossfit", "hiit"])
+        case .strengthTime: return weeklySport(day, state, SportCatalog.strengthKeys)
         case .sleepDebt: return day.sleepDebtSec
         case .sleepEfficiency: return day.sleep.map { $0.efficiency * 100 }
         case .respRate: return day.respRate
@@ -158,62 +158,5 @@ enum DashboardMetric: String, Codable, CaseIterable, Identifiable {
         let week = (0..<7).compactMap { state.day(DayKey.adding(-$0, to: day.date)) }
         let secs = week.flatMap(\.activities).filter { sports.contains($0.sport) }.reduce(0) { $0 + $1.durationSec }
         return Double(secs)
-    }
-}
-
-/// Activity types offered when adding or starting an activity.
-enum Sport: String, CaseIterable, Identifiable {
-    case course, cyclisme, randonnee, marche, musculation, natation, yoga, hiit, crossfit, football, tennis, padel,
-         ski, aviron, boxe, danse, escalade, activite
-
-    var id: String { rawValue }
-
-    static func label(_ raw: String) -> String { Sport(rawValue: raw)?.label ?? raw.capitalized }
-    static func icon(_ raw: String) -> String { Sport(rawValue: raw)?.icon ?? "figure.mixed.cardio" }
-
-    var label: String {
-        switch self {
-        case .course: return "Course à pied"
-        case .cyclisme: return "Cyclisme"
-        case .randonnee: return "Randonnée"
-        case .marche: return "Marche"
-        case .musculation: return "Musculation"
-        case .natation: return "Natation"
-        case .yoga: return "Yoga"
-        case .hiit: return "HIIT"
-        case .crossfit: return "CrossFit"
-        case .football: return "Football"
-        case .tennis: return "Tennis"
-        case .padel: return "Padel"
-        case .ski: return "Ski"
-        case .aviron: return "Aviron"
-        case .boxe: return "Boxe"
-        case .danse: return "Danse"
-        case .escalade: return "Escalade"
-        case .activite: return "Activité"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .course: return "figure.run"
-        case .cyclisme: return "figure.outdoor.cycle"
-        case .randonnee: return "figure.hiking"
-        case .marche: return "figure.walk"
-        case .musculation: return "dumbbell.fill"
-        case .natation: return "figure.pool.swim"
-        case .yoga: return "figure.yoga"
-        case .hiit: return "figure.highintensity.intervaltraining"
-        case .crossfit: return "figure.cross.training"
-        case .football: return "figure.soccer"
-        case .tennis: return "figure.tennis"
-        case .padel: return "figure.racquetball"
-        case .ski: return "figure.skiing.downhill"
-        case .aviron: return "figure.rower"
-        case .boxe: return "figure.boxing"
-        case .danse: return "figure.dance"
-        case .escalade: return "figure.climbing"
-        case .activite: return "figure.mixed.cardio"
-        }
     }
 }

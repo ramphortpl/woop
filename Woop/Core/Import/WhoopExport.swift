@@ -13,19 +13,30 @@ enum WhoopExport {
         var cycles = 0
         var sleeps = 0
         var workouts = 0
+        /// Files read, with what they contained (nil = not a WHOOP table).
+        var files: [(name: String, kind: Kind?)] = []
+        var firstDay: String? { days.first?.date }
+        var lastDay: String? { days.last?.date }
     }
 
-    enum Kind { case cycles, sleeps, workouts }
+    struct NamedText {
+        var name: String
+        var text: String
+    }
+
+    enum Kind: String { case cycles, sleeps, workouts, journal }
 
     // MARK: CSV
 
-    /// RFC-4180-style parser (quotes, escaped quotes, CRLF), BOM-tolerant.
+    /// RFC-4180-style parser (quotes, escaped quotes, CRLF), BOM-tolerant. The delimiter is
+    /// detected from the header line, so a file re-saved by a French spreadsheet (";") works.
     static func parseCSV(_ text: String) -> [[String]] {
         var rows: [[String]] = []
         var row: [String] = []
         var field = ""
         var inQuotes = false
         var it = Array(text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text)
+        let delimiter = detectDelimiter(it)
         it.append("\n")
         var i = 0
         while i < it.count {
@@ -39,7 +50,7 @@ enum WhoopExport {
             } else {
                 switch c {
                 case "\"": inQuotes = true
-                case ",": row.append(field); field = ""
+                case delimiter: row.append(field); field = ""
                 case "\r": break
                 case "\n", "\r\n":
                     row.append(field)
@@ -52,6 +63,20 @@ enum WhoopExport {
             i += 1
         }
         return rows
+    }
+
+    /// The most frequent of `,` `;` and tab on the first line (outside quotes).
+    static func detectDelimiter(_ chars: [Character]) -> Character {
+        var counts: [Character: Int] = [",": 0, ";": 0, "\t": 0]
+        var inQuotes = false
+        for c in chars {
+            if c == "\"" { inQuotes.toggle(); continue }
+            if inQuotes { continue }
+            if c == "\n" || c == "\r\n" || c == "\r" { break }
+            if counts[c] != nil { counts[c, default: 0] += 1 }
+        }
+        let best = counts.max { a, b in a.value < b.value || (a.value == b.value && a.key != ",") }
+        return (best?.value ?? 0) > 0 ? best!.key : ","
     }
 
     static let aliases: [String: String] = [
@@ -102,6 +127,12 @@ enum WhoopExport {
     ]
 
     static func normalize(_ header: String) -> String {
+        let out = normalizeRaw(header)
+        return aliases[out] ?? out
+    }
+
+    /// Header in snake_case ASCII, before the French → English alias map.
+    static func normalizeRaw(_ header: String) -> String {
         var s = header.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         s = s.replacingOccurrences(of: "%", with: "pct")
@@ -118,12 +149,14 @@ enum WhoopExport {
         }
         while out.hasPrefix("_") { out.removeFirst() }
         while out.hasSuffix("_") { out.removeLast() }
-        return aliases[out] ?? out
+        return out
     }
 
     struct Table {
         let headers: [String]
         let rows: [[String]]
+        /// The export's language (English headers), which decides what "Football" means.
+        var english = false
 
         func cell(_ row: [String], _ keys: String...) -> String? {
             for k in keys {
@@ -149,7 +182,10 @@ enum WhoopExport {
     static func table(_ text: String) -> Table? {
         let rows = parseCSV(text)
         guard let head = rows.first else { return nil }
-        return Table(headers: head.map(normalize), rows: Array(rows.dropFirst()))
+        let raw = head.map(normalizeRaw)
+        var t = Table(headers: raw.map { aliases[$0] ?? $0 }, rows: Array(rows.dropFirst()))
+        t.english = raw.contains("activity_name") || raw.contains("cycle_start_time") || raw.contains("workout_start_time")
+        return t
     }
 
     static func kind(of t: Table) -> Kind? {
@@ -158,6 +194,7 @@ enum WhoopExport {
         if h.contains("nap") && (h.contains("sleep_onset") || h.contains("wake_onset")) { return .sleeps }
         if h.contains("cycle_start_time") && (h.contains("recovery_score_pct") || h.contains("day_strain")) { return .cycles }
         if h.contains("sleep_onset") || h.contains("asleep_duration_min") { return .sleeps }
+        if h.contains("question_text") || h.contains("answered_yes") || h.contains("texte_de_la_question") { return .journal }
         return nil
     }
 
@@ -185,10 +222,22 @@ enum WhoopExport {
     }()
 
     static func parseTime(_ raw: String?, offsetMinutes: Int) -> Int? {
-        guard let s0 = raw?.trimmingCharacters(in: .whitespaces), !s0.isEmpty else { return nil }
-        let s = s0.replacingOccurrences(of: "T", with: " ")
-        formatter.timeZone = TimeZone(secondsFromGMT: offsetMinutes * 60) ?? TimeZone(identifier: "UTC")
-        for p in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+        guard var s = raw?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
+        s = s.replacingOccurrences(of: "T", with: " ")
+        var offset = offsetMinutes
+        // An explicit zone on the value itself ("…Z", "…+01:00") wins over the cycle's zone.
+        if s.hasSuffix("Z") {
+            s.removeLast()
+            offset = 0
+        } else if s.count > 16, let r = s.range(of: #"[+-]\d{2}:?\d{2}$"#, options: .regularExpression) {
+            offset = WhoopExport.offsetMinutes(String(s[r]))
+            s = String(s[..<r.lowerBound])
+        }
+        s = s.trimmingCharacters(in: .whitespaces)
+        if let dot = s.firstIndex(of: "."), s.distance(from: s.startIndex, to: dot) >= 16 { s = String(s[..<dot]) }
+        formatter.timeZone = TimeZone(secondsFromGMT: offset * 60) ?? TimeZone(identifier: "UTC")
+        for p in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm",
+                  "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "yyyy-MM-dd", "dd/MM/yyyy"] {
             formatter.dateFormat = p
             if let d = formatter.date(from: s) { return Int(d.timeIntervalSince1970) }
         }
@@ -206,12 +255,21 @@ enum WhoopExport {
     // MARK: Import
 
     static func importTexts(_ texts: [String]) -> Result {
+        importFiles(texts.enumerated().map { NamedText(name: "fichier \($0.offset + 1)", text: $0.element) })
+    }
+
+    static func importFiles(_ files: [NamedText]) -> Result {
         var result = Result()
         var days: [String: DayMetrics] = [:]
         var naps: [(key: String, s: SleepSession)] = []
-        for text in texts {
-            guard let t = table(text), let k = kind(of: t) else { continue }
+        for file in files {
+            let t = table(file.text)
+            let k = t.flatMap(kind(of:))
+            result.files.append((file.name, k))
+            guard let t, let k else { continue }
             switch k {
+            case .journal:
+                continue
             case .cycles:
                 for row in t.rows {
                     let tz = offsetMinutes(t.cell(row, "cycle_timezone"))
@@ -262,7 +320,8 @@ enum WhoopExport {
                     guard let s = parseTime(t.cell(row, "workout_start_time"), offsetMinutes: tz),
                           let e = parseTime(t.cell(row, "workout_end_time"), offsetMinutes: tz), e > s else { continue }
                     let name = t.cell(row, "activity_name") ?? "Activité"
-                    var a = ActivityRecord(id: "whoop-\(s)", sport: sportKey(name), start: s, end: e, source: .imported)
+                    var a = ActivityRecord(id: "whoop-\(s)", sport: SportCatalog.match(whoopName: name, englishExport: t.english),
+                                           start: s, end: e, source: .imported)
                     a.strain = t.double(row, "activity_strain")
                     a.calories = t.double(row, "energy_burned_cal")
                     a.avgHR = t.double(row, "average_hr_bpm")
@@ -282,7 +341,17 @@ enum WhoopExport {
         for n in naps {
             if var d = days[n.key] { d.naps.append(n.s); days[n.key] = d }
         }
-        result.days = days.values.sorted { $0.date < $1.date }
+        var sorted = days.values.sorted { $0.date < $1.date }
+        // Each workout goes to the cycle that contains it (else the calendar day it started).
+        for a in result.activities {
+            if let i = sorted.firstIndex(where: { d in
+                guard let s = d.cycleStart else { return false }
+                return a.start >= s && a.start < (d.cycleEnd ?? s + 30 * 3600)
+            }) ?? sorted.firstIndex(where: { $0.date == DayKey.key(unix: a.start) }) {
+                sorted[i].activities.append(a)
+            }
+        }
+        result.days = sorted
         return result
     }
 
@@ -297,23 +366,6 @@ enum WhoopExport {
         s.respRate = t.double(row, "respiratory_rate_rpm")
         s.bandDetected = true
         return s
-    }
-
-    /// Map a WHOOP activity name (EN/FR) to one of our sport keys.
-    static func sportKey(_ name: String) -> String {
-        let n = name.folding(options: .diacriticInsensitive, locale: nil).lowercased()
-        let table: [(String, String)] = [
-            ("run", "course"), ("course", "course"), ("cycl", "cyclisme"), ("velo", "cyclisme"), ("bike", "cyclisme"),
-            ("spin", "cyclisme"), ("hik", "randonnee"), ("randon", "randonnee"), ("ruck", "randonnee"),
-            ("walk", "marche"), ("marche", "marche"), ("weight", "musculation"), ("muscu", "musculation"),
-            ("strength", "musculation"), ("powerlift", "musculation"), ("swim", "natation"), ("natation", "natation"),
-            ("yoga", "yoga"), ("hiit", "hiit"), ("functional", "crossfit"), ("crossfit", "crossfit"),
-            ("soccer", "football"), ("football", "football"), ("tennis", "tennis"), ("padel", "padel"),
-            ("ski", "ski"), ("row", "aviron"), ("aviron", "aviron"), ("box", "boxe"), ("danc", "danse"), ("danse", "danse"),
-            ("climb", "escalade"), ("escalade", "escalade"),
-        ]
-        for (k, v) in table where n.contains(k) { return v }
-        return "activite"
     }
 }
 
@@ -346,5 +398,57 @@ extension DayMetrics {
         if !imp.naps.isEmpty { d.naps = imp.naps }
         if d.calibrationNights != nil && d.recovery != nil { d.calibrationNights = nil }
         return d
+    }
+}
+
+// MARK: - Export files (zip / csv / folders)
+
+extension WhoopExport {
+    struct Collected {
+        var texts: [NamedText] = []
+        /// Files skipped (not CSV, system junk), for the import report.
+        var ignored: [String] = []
+        var errors: [String] = []
+    }
+
+    /// Turn picked files (a .zip, CSVs, files from a folder) into CSV texts. Zips are recognized
+    /// by content, whatever their extension; nested zips are opened one level deep.
+    static func collect(_ files: [ZipArchive.File], depth: Int = 0) -> Collected {
+        var out = Collected()
+        for f in files {
+            let base = (f.name as NSString).lastPathComponent
+            if f.name.contains("__MACOSX/") || base.hasPrefix("._") || base == ".DS_Store" || base.isEmpty { continue }
+            if ZipArchive.isZip(f.bytes) {
+                guard depth < 2 else { out.ignored.append(base); continue }
+                let z = ZipArchive.files(f.bytes)
+                out.errors += z.errors
+                if z.files.isEmpty && z.errors.isEmpty { out.errors.append("\(base) : archive vide ou illisible") }
+                let inner = collect(z.files, depth: depth + 1)
+                out.texts += inner.texts
+                out.ignored += inner.ignored
+                out.errors += inner.errors
+                continue
+            }
+            let ext = (base as NSString).pathExtension.lowercased()
+            guard ["csv", "txt", "tsv", ""].contains(ext) || ext.count > 4 else { out.ignored.append(base); continue }
+            guard let text = decodeText(f.bytes), looksLikeTable(text) else { out.ignored.append(base); continue }
+            out.texts.append(NamedText(name: base, text: text))
+        }
+        return out
+    }
+
+    /// UTF-8 (with or without BOM), UTF-16 with BOM, else Windows-1252 / Latin-1.
+    static func decodeText(_ b: [UInt8]) -> String? {
+        if b.count >= 2 && b[0] == 0xFF && b[1] == 0xFE { return String(bytes: b.dropFirst(2), encoding: .utf16LittleEndian) }
+        if b.count >= 2 && b[0] == 0xFE && b[1] == 0xFF { return String(bytes: b.dropFirst(2), encoding: .utf16BigEndian) }
+        if let s = String(bytes: b, encoding: .utf8) { return s }
+        return String(bytes: b, encoding: .windowsCP1252) ?? String(bytes: b, encoding: .isoLatin1)
+    }
+
+    /// A header line with several delimited columns (cheap check before parsing).
+    static func looksLikeTable(_ text: String) -> Bool {
+        guard let first = text.split(whereSeparator: \.isNewline).first else { return false }
+        let n = first.filter { $0 == "," || $0 == ";" || $0 == "\t" }.count
+        return n >= 2
     }
 }

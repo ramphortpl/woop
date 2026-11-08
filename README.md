@@ -31,11 +31,34 @@ connecté. La **récupération** apparaît après 4 nuits de calibrage, comme su
 
 ### Récupérer ton historique WHOOP (recommandé)
 
-Dans l'app WHOOP : *Plus › Paramètres › Exporter les données*. Tu reçois un e-mail avec un `.zip` :
-enregistre-le dans Fichiers, puis dans Woop *Plus › Données et stockage › Importer depuis WHOOP*
-(le `.zip` directement, ou les fichiers CSV). Les jours passés affichent alors **exactement les scores
-WHOOP** (récupération, effort, sommeil, entraînements) et tes moyennes de référence sont calibrées
-immédiatement, sans attendre 4 nuits. Les exports en français et en anglais sont reconnus.
+Dans l'app WHOOP, demande l'export de tes données (profil › Paramètres › Exporter les données) :
+WHOOP t'envoie un e-mail avec un fichier `.zip`. Puis, au choix (*Plus › Importer depuis WHOOP*) :
+
+- **Choisir le fichier .zip** : touche simplement le fichier, l'import démarre tout de suite
+  (pas besoin du bouton « Ouvrir ») ;
+- **Choisir le dossier décompressé** si Fichiers a déjà décompressé le `.zip` (entre dans le
+  dossier puis « Ouvrir ») ;
+- **Partager › Woop** depuis Mail, Safari ou Fichiers ;
+- **Coller le lien** du bouton de téléchargement de l'e-mail ;
+- ou dépose le `.zip` dans *Fichiers › Sur mon iPhone › Woop* : il est importé à la prochaine
+  ouverture puis rangé dans « Importés ».
+
+Les jours passés affichent alors **exactement les scores WHOOP** (récupération, effort, sommeil,
+entraînements) et tes moyennes de référence sont calibrées immédiatement, sans attendre 4 nuits.
+Les exports en français et en anglais sont reconnus, même réenregistrés par Numbers ou Excel.
+
+### Notifications (comme WHOOP)
+
+*Plus › Notifications* : activité détectée (sport, horaires, effort, calories, avec **Confirmer** /
+**Changer de sport**), activité enregistrée en direct, récupération du matin, sommeil analysé,
+Moniteur de santé, effort optimal atteint ou dépassé, rappel du coucher, batterie du bracelet,
+rappel de synchronisation et bilan de la semaine. Chacune s'active séparément ; un bouton envoie
+une notification test.
+
+iOS met Woop en veille : une activité est annoncée à la synchronisation suivante (ouverture de
+l'app ou réveil par iOS). Pour être prévenu quelques minutes après la fin de l'activité, active
+*Connexion continue au bracelet* (un peu plus de batterie du bracelet), et ne ferme pas Woop
+depuis le sélecteur d'apps.
 
 ### Arrière-plan
 
@@ -55,6 +78,7 @@ Pas encore de bracelet sous la main ? *Plus › Mode démo* affiche l'interface 
 | **Sommeil** | Performance, besoin, hypnogramme (éveil / léger / profond / paradoxal), efficacité, régularité, latence, perturbations, cycles, dette |
 | **Récupération** | Score 0–100 % (vert / jaune / rouge) et ses facteurs vs tes moyennes 30 j |
 | **Effort** | Score 0–21, courbe de la journée, zones de FC, calories, pas, activités |
+| **Activités** | Plus de 150 sports (raquette, collectifs, combat, nautiques, hiver, fitness…), recherche, récents, détection automatique |
 | **Santé** | Moniteur de santé : FC au repos, VFC, respiration, SpO₂ (estimation), température cutanée vs ta norme |
 | **Communauté** | Série, résumé de la semaine, records, défis (hors ligne) |
 | **Plus** | Profil, bracelet (état, batterie, firmware, synchro, vibration, journal Bluetooth), réglages, données |
