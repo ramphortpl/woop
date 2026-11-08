@@ -292,11 +292,11 @@ enum NotificationPlanner {
                                    route: "planner", thread: "sleep-planner")
     }
 
-    static let syncReminderDelay: TimeInterval = 10 * 3600
+    static let syncReminderDelay: TimeInterval = 12 * 3600
 
     static func syncReminder() -> PlannedNotification {
         PlannedNotification(id: "sync-reminder", kind: .syncReminder, title: "Bracelet non synchronisé",
-                            body: "Woop n'a pas reçu de données de ton WHOOP depuis 10 h. Ouvre l'app, bracelet à proximité, pour mettre à jour tes scores.",
+                            body: "Woop n'a pas reçu de données de ton WHOOP depuis 12 h. Ouvre l'app, bracelet à proximité, pour mettre à jour tes scores.",
                             route: "device", thread: "sync")
     }
 

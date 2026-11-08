@@ -40,7 +40,7 @@ struct NotificationSettingsView: View {
             CardBox(title: "Bracelet") {
                 toggle("Batterie", "Batterie faible (20 % puis 10 %) et recharge terminée.", \.battery)
                 Divider().overlay(Theme.separator)
-                toggle("Rappel de synchronisation", "Si ton bracelet ne s'est pas synchronisé depuis 10 h.", \.syncReminder)
+                toggle("Rappel de synchronisation", "Si ton bracelet ne s'est pas synchronisé depuis 12 h.", \.syncReminder)
             }
             CardBox(title: "Prévenir juste après une activité") {
                 Toggle(isOn: Binding(get: { app.settings.continuousHR }, set: {

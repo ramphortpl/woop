@@ -394,6 +394,7 @@ struct OnboardingView: View {
                 strap.stopScan()
                 app.settings.onboardingDone = true
                 app.recompute(daysBack: nil)
+                Notifier.shared.requestAuthorization()
             }
             Button {
                 strap.stopScan()
