@@ -160,6 +160,16 @@ struct RootView: View {
         }
     }
 
+    /// CI screenshot of an activity: open the first one of the day once the demo is computed.
+    private func openFirstActivity(attempt: Int) {
+        if let a = app.selected.activities.first {
+            homePath = [.activity(a.id)]
+            return
+        }
+        guard attempt < 25 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { openFirstActivity(attempt: attempt + 1) }
+    }
+
     /// `-woopScreen` launch argument: open a given screen directly (used for CI screenshots).
     private func applyLaunchScreen() {
         switch app.launchScreen {
@@ -169,10 +179,7 @@ struct RootView: View {
         case "customize": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCustomize = true }
         case "coach": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCoach = true }
         case "sleep", "sleep2": homePath = [.sleep]
-        case "workout":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
-                if let a = app.selected.activities.first { homePath = [.activity(a.id)] }
-            }
+        case "workout": openFirstActivity(attempt: 0)
         case "recovery": homePath = [.recovery]
         case "strain": homePath = [.strain]
         case "device": homePath = [.device]

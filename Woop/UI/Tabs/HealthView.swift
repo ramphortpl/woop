@@ -88,26 +88,35 @@ struct HealthView: View {
 
     private func vitalRow(_ v: Vital) -> some View {
         let ok: Bool? = (v.value != nil && v.range != nil) ? v.range!.contains(v.value!) : nil
-        return HStack(spacing: 14) {
-            Image(systemName: v.icon).font(.system(size: 20)).foregroundColor(Theme.textSecondary).frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 13) {
+                Image(systemName: v.icon).font(.system(size: 18, weight: .light)).foregroundColor(Color(hex: 0x9A9EA2)).frame(width: 24)
                 Text(v.title).wLabel(11.5).lineLimit(2).minimumScaleFactor(0.8)
-                if let r = v.range {
-                    Text("Norme : \(v.format(r.lowerBound)) – \(v.format(r.upperBound)) \(v.unit)").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
-                } else {
-                    Text("Norme en cours d'apprentissage").font(WFont.text(12)).foregroundColor(Theme.textTertiary)
+                Spacer(minLength: 6)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(v.format(v.value)).font(WFont.number(22, weight: .bold)).foregroundColor(.white)
+                    Text(v.value == nil ? "" : v.unit).font(WFont.text(11, weight: .medium)).foregroundColor(Theme.textSecondary)
                 }
             }
-            Spacer()
-            if let ok {
-                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundColor(ok ? Theme.recoveryGreen : Theme.recoveryYellow)
+            if let r = v.range {
+                RangeBar(value: v.value, range: r, ok: ok)
+                HStack {
+                    Text("Norme : \(v.format(r.lowerBound)) – \(v.format(r.upperBound)) \(v.unit)")
+                        .font(WFont.text(12, weight: .medium)).foregroundColor(Theme.textTertiary)
+                    Spacer()
+                    if let ok {
+                        HStack(spacing: 5) {
+                            Circle().fill(ok ? Theme.optimal : Theme.insufficient).frame(width: 7, height: 7)
+                            Text(ok ? "Dans ta norme" : "Hors norme").wLabel(9.5, color: ok ? Theme.optimal : Theme.insufficient)
+                        }
+                    }
+                }
+            } else {
+                Text("Norme en cours d'apprentissage (4 nuits minimum)").font(WFont.text(12, weight: .medium)).foregroundColor(Theme.textTertiary)
             }
-            Text(v.format(v.value)).font(WFont.number(24, weight: .bold)).foregroundColor(.white)
-            Text(v.value == nil ? "" : v.unit).font(WFont.text(11, weight: .semibold)).foregroundColor(Theme.textSecondary)
         }
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.cardGradient))
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.cardGradient))
     }
 
     private func stageLine(_ name: String, _ s: SleepStage, _ sec: Double, _ total: Double) -> some View {
@@ -204,5 +213,34 @@ struct CommunityView: View {
             }
             .frame(height: 6)
         }
+    }
+}
+
+/// Where tonight's value sits: grey track, the usual range highlighted, a dot for the value.
+struct RangeBar: View {
+    var value: Double?
+    var range: ClosedRange<Double>
+    var ok: Bool?
+
+    var body: some View {
+        GeometryReader { g in
+            let span = max(range.upperBound - range.lowerBound, 0.0001)
+            let lo = range.lowerBound - span * 0.6, hi = range.upperBound + span * 0.6
+            let x: (Double) -> CGFloat = { CGFloat((min(hi, max(lo, $0)) - lo) / (hi - lo)) * g.size.width }
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.track).frame(height: 6)
+                Capsule().fill(Color.white.opacity(0.22))
+                    .frame(width: x(range.upperBound) - x(range.lowerBound), height: 6)
+                    .offset(x: x(range.lowerBound))
+                if let value {
+                    Circle().fill(ok == false ? Theme.insufficient : Color.white)
+                        .frame(width: 13, height: 13)
+                        .overlay(Circle().stroke(Theme.bgTop, lineWidth: 2))
+                        .offset(x: x(value) - 6.5)
+                }
+            }
+            .frame(height: g.size.height)
+        }
+        .frame(height: 14)
     }
 }

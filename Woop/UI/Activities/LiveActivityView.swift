@@ -118,6 +118,24 @@ struct StartActivityView: View {
     }
 
     private var routeSwitch: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            routeToggle
+            if app.settings.routeTracking && (workout.authorization == .denied || workout.authorization == .restricted) {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                } label: {
+                    Text("Position refusée : Réglages › Woop › Position")
+                        .font(WFont.text(12, weight: .semibold)).foregroundColor(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().fill(Color.black.opacity(0.6)))
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 20)
+            }
+        }
+    }
+
+    private var routeToggle: some View {
         HStack(spacing: 18) {
             Spacer()
             Text("Suivi d'itinéraire").font(WFont.label(14, weight: .semibold)).tracking(1.6)

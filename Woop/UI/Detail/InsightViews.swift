@@ -104,15 +104,15 @@ struct DailyOutlookView: View {
         let d = app.day(date) ?? .empty(date)
         DetailScaffold(title: "Perspectives quotidiennes", subtitle: Fmt.longDate(date)) {
             CardBox {
-                Text(Coach.greeting(app.settings.profile.firstName)).font(WFont.title(24)).foregroundColor(.white)
-                Text(Coach.outlook(day: d, app: app)).font(WFont.text(16)).foregroundColor(Theme.textSecondary)
+                Text(Coach.greeting(app.settings.profile.firstName)).font(WFont.title(22)).foregroundColor(.white)
+                Text(Coach.outlook(day: d, app: app)).font(WFont.text(15.5)).foregroundColor(Color(hex: 0xC9CBCE)).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let target = StrainTarget.forRecovery(d.recovery) {
                 CardBox(title: "Effort optimal") {
                     HStack(alignment: .firstTextBaseline) {
                         Text("\(Fmt.dec1(target.lowerBound)) – \(Fmt.dec1(target.upperBound))")
-                            .font(WFont.number(40, weight: .bold)).foregroundColor(Theme.strain)
+                            .font(WFont.number(36, weight: .bold)).foregroundColor(Theme.strain)
                         Spacer()
                         Text("actuel : \(Fmt.dec1(d.strain))").font(WFont.number(18)).foregroundColor(Theme.textSecondary)
                     }

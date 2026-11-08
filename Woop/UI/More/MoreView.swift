@@ -67,7 +67,7 @@ struct MoreView: View {
                     group("À propos") {
                         link("Licences et crédits", "doc.text", detail: nil) { AboutView() }
                     }
-                    Text("Woop \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") — application indépendante, non affiliée à WHOOP, Inc.")
+                    Text("Woop \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")) — application indépendante, non affiliée à WHOOP, Inc.")
                         .font(WFont.text(11)).foregroundColor(Theme.textTertiary)
                 }
                 .padding(.horizontal, 16)
@@ -91,15 +91,15 @@ struct MoreView: View {
 
     private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).wLabel(12, color: Theme.textSecondary).padding(.leading, 4)
+            Text(title).wLabel(11.4, color: Color(hex: 0x8C8F92)).padding(.leading, 4)
             VStack(spacing: 12, content: content).wCard()
         }
     }
 
     private func rowLabel(_ t: String, _ icon: String, detail: String?) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 17)).foregroundColor(Theme.textSecondary).frame(width: 26)
-            Text(t).font(WFont.text(16, weight: .medium)).foregroundColor(.white)
+            Image(systemName: icon).font(.system(size: 17, weight: .light)).foregroundColor(Color(hex: 0x9A9EA2)).frame(width: 26)
+            Text(t).font(WFont.text(15.5, weight: .medium)).foregroundColor(.white)
             Spacer()
             if let detail { Text(detail).font(WFont.text(13)).foregroundColor(Theme.textSecondary).lineLimit(1) }
         }
@@ -112,7 +112,7 @@ struct MoreView: View {
         } label: {
             HStack {
                 rowLabel(t, icon, detail: detail)
-                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundColor(Theme.textTertiary)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .light)).foregroundColor(Theme.textTertiary)
             }
         }
         .buttonStyle(.plain)
@@ -353,7 +353,7 @@ struct OnboardingView: View {
 
     private var profile: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Ton profil").font(WFont.title(30)).foregroundColor(.white).padding(.top, 20)
+            Text("Ton profil").font(WFont.title(26)).foregroundColor(.white).padding(.top, 20)
             Text("Utilisé pour la fréquence cardiaque maximale, les calories et ta récupération.")
                 .font(WFont.text(14)).foregroundColor(Theme.textSecondary)
             ScrollView {
@@ -384,7 +384,7 @@ struct OnboardingView: View {
 
     private var pair: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Connecte ton WHOOP").font(WFont.title(30)).foregroundColor(.white).padding(.top, 20)
+            Text("Connecte ton WHOOP").font(WFont.title(26)).foregroundColor(.white).padding(.top, 20)
             ScrollView { PairingCard() }
             if strap.state.isConnected {
                 Text("Connecté ! La première synchronisation de l'historique peut prendre quelques minutes.")

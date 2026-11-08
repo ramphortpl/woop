@@ -246,21 +246,24 @@ struct HomeView: View {
                     Spacer()
                     Image(systemName: "chevron.right").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: 0xA6A9AD))
                 }
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 8) {
+                // Two centred columns, as on WHOOP: bedtime, and the alarm (orange when off).
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(spacing: 8) {
                         Text(app.recommendedBedtime.map { Fmt.clock24($0) } ?? "—")
                             .font(WFont.number(31, weight: .bold)).foregroundColor(.white)
-                        Text("Heure de coucher\nrecommandée").wLabel(10.4, color: Color(hex: 0x9EA2A6)).lineSpacing(3)
+                        Text("Heure de coucher\nrecommandée").wLabel(10.4, color: Color(hex: 0x9EA2A6))
+                            .multilineTextAlignment(.center).lineSpacing(3)
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 8) {
+                    .frame(maxWidth: .infinity)
+                    VStack(spacing: 8) {
                         Text(Fmt.minuteOfDay(app.settings.alarmEnabled ? app.settings.alarmMinute : app.typicalWakeMinute))
                             .font(WFont.number(31, weight: .bold))
                             .foregroundColor(app.settings.alarmEnabled ? .white : Theme.alarmOrange)
                         Text(app.settings.alarmEnabled ? "Alarme\nactivée" : "Alarme\ndésactivée")
-                            .wLabel(10.4, color: app.settings.alarmEnabled ? Color(hex: 0x9EA2A6) : Theme.alarmOrange).lineSpacing(3)
-                            .multilineTextAlignment(.trailing)
+                            .wLabel(10.4, color: app.settings.alarmEnabled ? Color(hex: 0x9EA2A6) : Theme.alarmOrange)
+                            .multilineTextAlignment(.center).lineSpacing(3)
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .padding(.top, 16)
                 if let need = day.tonightNeedSec {
