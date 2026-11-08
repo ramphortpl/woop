@@ -42,6 +42,10 @@ targets:
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [bluetooth-central]
+        UIAppFonts:
+          - BarlowSemiCondensed-Medium.ttf
+          - BarlowSemiCondensed-SemiBold.ttf
+          - BarlowSemiCondensed-Bold.ttf
         NSBluetoothAlwaysUsageDescription: "Woop se connecte directement à ton bracelet WHOOP en Bluetooth pour lire ta fréquence cardiaque, tes intervalles R-R, ta batterie et tes données de capteurs. Tout reste sur ton iPhone."
         NSBluetoothPeripheralUsageDescription: "Woop se connecte à ton bracelet WHOOP en Bluetooth."
     settings:
