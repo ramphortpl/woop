@@ -1,0 +1,66 @@
+name: Woop
+options:
+  bundleIdPrefix: com.ramphortpl
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  developmentLanguage: fr
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+targets:
+  Woop:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Woop
+    info:
+      path: Woop/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Woop
+        CFBundleName: Woop
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: fr
+        CFBundleLocalizations: [fr]
+        CFBundleAllowMixedLocalizations: true
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIRequiresFullScreen: true
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [bluetooth-central]
+        NSBluetoothAlwaysUsageDescription: "Woop se connecte directement à ton bracelet WHOOP en Bluetooth pour lire ta fréquence cardiaque, tes intervalles R-R, ta batterie et tes données de capteurs. Tout reste sur ton iPhone."
+        NSBluetoothPeripheralUsageDescription: "Woop se connecte à ton bracelet WHOOP en Bluetooth."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ramphortpl.woop
+        PRODUCT_NAME: Woop
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+schemes:
+  Woop:
+    build:
+      targets:
+        Woop: all
+    run:
+      config: Debug
+    archive:
+      config: Release

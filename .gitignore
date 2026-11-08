@@ -1,0 +1,10 @@
+# Xcode / XcodeGen
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+Woop/Resources/Info.plist
+*.ipa
+Payload/
+.DS_Store
