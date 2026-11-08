@@ -65,9 +65,9 @@ struct RootView: View {
                 .fullScreenCover(isPresented: $showCustomize) { DashboardCustomizeView() }
                 .onAppear {
                     applyLaunchScreen()
-                    open(app.deepLink)
+                    openLink(app.deepLink)
                 }
-                .onChange(of: app.deepLink) { open($0) }
+                .onChange(of: app.deepLink) { openLink($0) }
             }
         }
         .alert(item: $app.importOutcome) { o in
@@ -80,7 +80,7 @@ struct RootView: View {
     @State private var homePath: [HomeRoute] = []
 
     /// Go where a tapped notification points.
-    private func open(_ link: DeepLink?) {
+    private func openLink(_ link: DeepLink?) {
         guard let link else { return }
         app.deepLink = nil
         showCoach = false

@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import UIKit
 
 /// Plus › Notifications: the WHOOP-style notifications, one switch each.

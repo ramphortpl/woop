@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct MoreView: View {
     @EnvironmentObject var app: AppState
