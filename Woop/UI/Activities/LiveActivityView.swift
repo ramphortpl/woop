@@ -161,10 +161,12 @@ struct StartActivityView: View {
 
     /// Strain target of the day: ring = today's effort so far against the target.
     private var targetRow: some View {
-        let current = session == nil ? (today?.strain ?? 0) : (workout.dayStrain ?? today?.strain ?? 0)
-        let on = app.settings.strainTargetOn
+        let dayStrain: Double = today?.strain ?? 0
+        let current: Double = session == nil ? dayStrain : (workout.dayStrain ?? dayStrain)
+        let goal: Double? = app.settings.strainTargetOn ? target : nil
+        let progress: Double = goal.map { current / max(1, $0) } ?? 0
         return HStack(spacing: 0) {
-            MiniStrainRing(progress: (on && target != nil) ? current / max(1, target!) : 0)
+            MiniStrainRing(progress: progress)
                 .frame(width: 25, height: 25)
             Text(target.map { Fmt.dec1($0) } ?? "—").font(WFont.number(20.5, weight: .bold)).foregroundColor(.black)
                 .padding(.leading, 15)
@@ -180,10 +182,22 @@ struct StartActivityView: View {
         .opacity(target == nil ? 0.5 : 1)
     }
 
+    private var distanceText: String {
+        guard workout.distanceM >= 1 else { return "—" }
+        let km: String = String(format: "%.2f", workout.distanceM / 1000).replacingOccurrences(of: ".", with: ",")
+        return km + " km"
+    }
+
+    private var runningProgress: Double {
+        let live: Double = workout.dayStrain ?? 0
+        if let t = target { return live / max(1, t) }
+        return workout.strain / 21
+    }
+
     private func running(_ s: LiveSession) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                MiniStrainRing(progress: target.map { (workout.dayStrain ?? 0) / max(1, $0) } ?? workout.strain / 21)
+                MiniStrainRing(progress: runningProgress)
                     .frame(width: 25, height: 25)
                 Text(Fmt.dec1(workout.strain)).font(WFont.number(20.5, weight: .bold)).foregroundColor(.black)
                     .padding(.leading, 15)
@@ -204,7 +218,7 @@ struct StartActivityView: View {
                 HStack(spacing: 0) {
                     stat("Durée", Fmt.timer(Int(ctx.date.timeIntervalSince1970) - s.start))
                     if app.settings.routeTracking {
-                        stat("Distance", workout.distanceM >= 1 ? String(format: "%.2f", workout.distanceM / 1000).replacingOccurrences(of: ".", with: ",") + " km" : "—")
+                        stat("Distance", distanceText)
                     }
                     stat("Calories", Fmt.int(workout.calories))
                     stat("FC moy.", workout.avgHR.map { Fmt.int($0) } ?? "—")
@@ -279,9 +293,10 @@ struct LiveHRCircle: View {
             Circle().fill(blue.opacity(0.2)).frame(width: 325, height: 325)
             TimelineView(.animation(minimumInterval: 1 / 30, paused: bpm == nil)) { ctx in
                 // Gentle pulse at the heart rate.
-                let t = ctx.date.timeIntervalSinceReferenceDate
-                let beat = bpm.map { Double($0) / 60 } ?? 0
-                let phase = beat > 0 ? pow(max(0, sin(t * beat * .pi)), 8) : 0
+                let t: Double = ctx.date.timeIntervalSinceReferenceDate
+                let beat: Double = bpm.map { Double($0) / 60 } ?? 0
+                let wave: Double = max(0, sin(t * beat * Double.pi))
+                let phase: Double = beat > 0 ? pow(wave, 8) : 0
                 Circle().fill(blue.opacity(0.93))
                     .frame(width: 193, height: 193)
                     .scaleEffect(1 + 0.025 * phase)

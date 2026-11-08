@@ -5,15 +5,17 @@ import SwiftUI
 // MARK: - Axis helpers
 
 enum ChartAxis {
-    /// Five evenly spaced heart-rate gridlines covering the data (30…110 for a typical night).
+    /// Five evenly spaced heart-rate gridlines with a round step covering the data
+    /// (30 · 50 · 70 · 90 · 110 for a typical night, as in WHOOP).
     static func hrTicks(_ values: [Double]) -> [Double] {
         guard let mn = values.min(), let mx = values.max() else { return [30, 50, 70, 90, 110] }
-        var lo = 30.0
-        while lo > 0 && mn < lo + 3 { lo -= 10 }
-        var hi = max(110, (mx / 10).rounded(.up) * 10)
-        var step = ((hi - lo) / 4 / 5).rounded(.up) * 5
-        step = max(step, 10)
-        hi = lo + step * 4
+        for step in [20.0, 25, 30, 40, 50] {
+            for lo in [30.0, 40, 50, 60, 20, 10, 0] where lo <= mn - 2 && lo + 4 * step >= mx + 2 {
+                return (0...4).map { lo + Double($0) * step }
+            }
+        }
+        let lo = max(0, (mn / 10).rounded(.down) * 10)
+        let step = max(10, ((mx - lo) / 4 / 10).rounded(.up) * 10)
         return (0...4).map { lo + Double($0) * step }
     }
 }
