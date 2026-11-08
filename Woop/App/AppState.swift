@@ -50,7 +50,22 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Screen requested by the `-woopScreen <name>` launch argument (CI screenshots).
+    let launchScreen: String? = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-woopScreen"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+
     func start() {
+        if ProcessInfo.processInfo.arguments.contains("-woopDemo") {
+            if settings.profile.firstName.isEmpty {
+                settings.profile.firstName = "Paul-Louis"
+                settings.profile.lastName = "R"
+            }
+            settings.onboardingDone = true
+            settings.demoMode = true
+        }
         strap.onHistoryCommitted = { [weak self] _, _ in
             Task { @MainActor in self?.scheduleRecompute(delay: 20) }
         }

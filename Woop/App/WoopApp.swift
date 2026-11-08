@@ -38,7 +38,7 @@ struct RootView: View {
                     ScreenBackground()
                     Group {
                         switch tab {
-                        case .home: NavigationStack { HomeView() }
+                        case .home: NavigationStack(path: $homePath) { HomeView() }
                         case .health: NavigationStack { HealthView() }
                         case .community: NavigationStack { CommunityView() }
                         case .more: NavigationStack { MoreView() }
@@ -50,7 +50,28 @@ struct RootView: View {
                 }
                 .ignoresSafeArea(.keyboard)
                 .sheet(isPresented: $showCoach) { CoachView() }
+                .sheet(isPresented: $showCustomize) { DashboardCustomizeView() }
+                .onAppear(perform: applyLaunchScreen)
             }
+        }
+    }
+
+    @State private var showCustomize = false
+    @State private var homePath: [HomeRoute] = []
+
+    /// `-woopScreen` launch argument: open a given screen directly (used for CI screenshots).
+    private func applyLaunchScreen() {
+        switch app.launchScreen {
+        case "health": tab = .health
+        case "community": tab = .community
+        case "more": tab = .more
+        case "customize": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCustomize = true }
+        case "coach": DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCoach = true }
+        case "sleep": homePath = [.sleep]
+        case "recovery": homePath = [.recovery]
+        case "strain": homePath = [.strain]
+        case "device": homePath = [.device]
+        default: break
         }
     }
 }

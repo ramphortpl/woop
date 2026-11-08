@@ -98,7 +98,8 @@ final class HistoryDrain {
                 return haveSamples.isEmpty && haveEvents.isEmpty ? .none
                     : .commit(samples: haveSamples, events: haveEvents, ackToken: nil)
             }
-            if expected > 0 && received + slack < expected {
+            // The packet-count gate is verified on gen5 only (as in OpenStrap edge).
+            if profile.isGen5 && expected > 0 && received + slack < expected {
                 consecutiveFailures += 1
                 if consecutiveFailures >= Self.attemptLimit { return .abort }
                 return .refuse(shortfall: expected - received)

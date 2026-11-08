@@ -133,3 +133,68 @@ final class ProtocolTests: XCTestCase {
         XCTAssertTrue(h.wristOn)
     }
 }
+
+final class DrainTests: XCTestCase {
+    func v18Frame(ts: Int, hr: UInt8) -> Frame {
+        var inner = [UInt8](repeating: 0, count: 112)
+        inner[0] = PacketType.historicalData
+        inner[1] = 18
+        inner.replaceSubrange(7..<11, with: [UInt8].le32(ts))
+        inner[14] = hr
+        return Frame(inner: inner, headerOK: true, crc32OK: true, revisionOK: true)
+    }
+
+    func marker(_ sub: UInt8, expected: Int = 0, token: [UInt8] = [1, 2, 3, 4, 5, 6, 7, 8]) -> HistoryMarker {
+        var inner = [UInt8](repeating: 0, count: 24)
+        inner[0] = PacketType.metadata
+        inner[2] = sub
+        inner.replaceSubrange(9..<13, with: [UInt8].le32(expected))
+        inner.replaceSubrange(13..<21, with: token)
+        return HistoryMarker.parse(inner)!
+    }
+
+    func testOwnBurstCommitsThenAcks() {
+        let d = HistoryDrain(profile: .gen5)
+        d.beginOwnDrain()
+        XCTAssertEqual(d.onMarker(marker(SyncMeta.historyStart)), .none)
+        d.onHistoricalPacket(v18Frame(ts: 1_780_000_000, hr: 60))
+        d.onHistoricalPacket(v18Frame(ts: 1_780_000_001, hr: 61))
+        guard case let .commit(samples, _, token) = d.onMarker(marker(SyncMeta.historyEnd, expected: 2)) else {
+            return XCTFail("expected commit")
+        }
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(token, [1, 2, 3, 4, 5, 6, 7, 8])
+        XCTAssertEqual(d.onMarker(marker(SyncMeta.historyComplete)), .complete)
+    }
+
+    func testShortBurstIsRefused() {
+        let d = HistoryDrain(profile: .gen5)
+        d.beginOwnDrain()
+        _ = d.onMarker(marker(SyncMeta.historyStart))
+        d.onHistoricalPacket(v18Frame(ts: 1_780_000_000, hr: 60))
+        XCTAssertEqual(d.onMarker(marker(SyncMeta.historyEnd, expected: 3)), .refuse(shortfall: 2))
+    }
+
+    func testForeignBurstIsBankedButNeverAcked() {
+        let d = HistoryDrain(profile: .gen5)
+        _ = d.onMarker(marker(SyncMeta.historyStart))
+        d.onHistoricalPacket(v18Frame(ts: 1_780_000_000, hr: 60))
+        guard case let .commit(samples, _, token) = d.onMarker(marker(SyncMeta.historyEnd, expected: 1)) else {
+            return XCTFail("expected commit")
+        }
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertNil(token)
+    }
+
+    func testUnclockedRecordsAreNeverBanked() {
+        let d = HistoryDrain(profile: .gen5)
+        d.beginOwnDrain()
+        _ = d.onMarker(marker(SyncMeta.historyStart))
+        d.onHistoricalPacket(v18Frame(ts: 31_000_000, hr: 60)) // 1970/71: strap RTC unset
+        guard case let .commit(samples, _, token) = d.onMarker(marker(SyncMeta.historyEnd, expected: 1)) else {
+            return XCTFail("expected commit")
+        }
+        XCTAssertTrue(samples.isEmpty)
+        XCTAssertNotNil(token)
+    }
+}

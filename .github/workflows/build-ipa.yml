@@ -82,3 +82,69 @@ jobs:
           gh release create ipa-latest Woop.ipa --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Woop iOS — dernière version (${VER} build ${GITHUB_RUN_NUMBER})" \
             --notes "$NOTES" --latest
+
+  screenshots:
+    # Renders the app in the iOS Simulator (demo data) and publishes PNGs to the rolling
+    # "screenshots" release, to check the interface against the WHOOP app.
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          for XC in /Applications/Xcode_16.4.app /Applications/Xcode_26.2.app; do
+            if [ -d "$XC" ]; then sudo xcode-select -s "$XC"; break; fi
+          done
+          xcodebuild -version
+
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+
+      - name: Pick and boot a simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[x for rt,ds in d.items() if "iOS" in rt for x in ds if x["name"] in ("iPhone 16 Pro","iPhone 16","iPhone 15 Pro")]
+          print(c[0]["udid"] if c else "")')
+          test -n "$UDID" || { xcrun simctl list devices available; exit 1; }
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "16:13" --batteryState charged --batteryLevel 80 --cellularBars 4 --wifiBars 3 || true
+
+      - name: Build for simulator (Release)
+        run: |
+          set -o pipefail
+          xcodebuild -project Woop.xcodeproj -scheme Woop -configuration Release -sdk iphonesimulator \
+            -destination "id=$UDID" -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee sim.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" sim.log
+
+      - name: Capture screens
+        run: |
+          APP=$(find build/sim/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p shots
+          for S in home customize sleep recovery strain health community more coach device; do
+            xcrun simctl launch "$UDID" com.ramphortpl.woop -woopDemo -woopScreen "$S" > /dev/null
+            sleep 22
+            xcrun simctl io "$UDID" screenshot "shots/$S.png"
+            xcrun simctl terminate "$UDID" com.ramphortpl.woop || true
+            sleep 1
+          done
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Woop-screenshots
+          path: shots
+
+      - name: Publish screenshots release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete screenshots --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create screenshots shots/*.png --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Captures d'écran (simulateur, mode démo)" --notes "Commit ${GITHUB_SHA::7}" --prerelease
