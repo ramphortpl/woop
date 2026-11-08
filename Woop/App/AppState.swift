@@ -73,7 +73,8 @@ final class AppState: ObservableObject {
             settings.demoMode = true
         }
         strap.onHistoryCommitted = { [weak self] _, _ in
-            Task { @MainActor in self?.scheduleRecompute(delay: 20) }
+            // Mid-transfer: rescore at most every 90 s; the end of the drain triggers a final pass.
+            Task { @MainActor in self?.scheduleRecompute(delay: 90) }
         }
         strap.onDrainComplete = { [weak self] in
             Task { @MainActor in self?.scheduleRecompute(delay: 1) }

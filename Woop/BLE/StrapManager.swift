@@ -780,7 +780,7 @@ final class StrapManager: NSObject, ObservableObject {
         guard bootstrapped, let p = peripheral, p.state == .connected else { return }
         if drain.ownDrainActive {
             // Idle watchdog: a drain that went silent is abandoned (the strap keeps its checkpoint).
-            if now.timeIntervalSince(lastHistoryTraffic) > 45 {
+            if now.timeIntervalSince(lastHistoryTraffic) > 60 {
                 logLine("Synchronisation inactive — interrompue, reprise plus tard")
                 send(WhoopCommands.abortHistorical(seq: seq.nextLive(), profile: bandProfile))
                 drain.endOwnDrain()

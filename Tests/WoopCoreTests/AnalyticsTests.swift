@@ -156,3 +156,23 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertLessThan(poor, 20)
     }
 }
+
+final class LiveMixTests: XCTestCase {
+    /// A night synced from history followed by a whole day seen only through the live HR stream
+    /// (no band state, no motion) must still be detected and staged from the band envelope.
+    func testNightDetectedDespiteLongLiveOnlyDay() {
+        let start = "2026-10-01"
+        var samples = AnalyticsTests.makeSamples(days: 3, startKey: start, hrvScale: [1])
+        let dayStart = DayKey.startUnix("2026-10-03")!
+        for i in samples.indices where samples[i].ts >= dayStart + 8 * 3600 {
+            var s = HistorySample(ts: samples[i].ts, hr: samples[i].hr)
+            s.setRR(samples[i].rr)
+            samples[i] = s // live-only second: HR + R-R, nothing else
+        }
+        let now = dayStart + 23 * 3600
+        let m = DayEngine.compute(DayInputs(date: "2026-10-03", samples: samples, profile: UserProfile(), history: [], now: now))
+        XCTAssertNotNil(m.sleep)
+        XCTAssertTrue(m.sleep?.bandDetected ?? false)
+        XCTAssertNotNil(m.strain)
+    }
+}

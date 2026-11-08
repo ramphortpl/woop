@@ -86,6 +86,9 @@ struct MinuteSeries {
     /// Mean per-second jerk in the minute, or nil without motion data.
     func motion(_ i: Int) -> Double? { jerkN[i] >= 10 ? jerkSum[i] / Double(jerkN[i]) : nil }
 
+    /// Minutes carrying the band's sleep-state envelope (WHOOP 5.0 / MG history).
+    var bandStateMinutes: Int { (0..<count).filter { hasBandState($0) }.count }
+
     /// Fraction of minutes (with any data) carrying the band's sleep-state envelope.
     var bandStateCoverage: Double {
         var withData = 0, withState = 0
@@ -107,7 +110,9 @@ enum SleepDetector {
     }
 
     static func detect(_ m: MinuteSeries) -> [Candidate] {
-        m.bandStateCoverage >= 0.5 ? detectFromBand(m) : detectFromMotion(m)
+        // Live-only seconds (realtime HR while the app is open) carry no band state, so judge on
+        // the amount of band-state data rather than its share of the window.
+        m.bandStateMinutes >= 120 ? detectFromBand(m) : detectFromMotion(m)
     }
 
     /// Minute state from the band envelope: 2 asleep, 1 settling, 0 awake, -1 no data.
