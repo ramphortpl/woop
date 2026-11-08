@@ -39,6 +39,8 @@ final class AppState: ObservableObject {
     /// Days imported from the official WHOOP export (WHOOP's own scores).
     private(set) var importedDays: [String: DayMetrics] = [:]
     private var recomputeScheduled = false
+    /// A recompute requested while one was running: `.some(nil)` = full, `.some(n)` = last n days.
+    private var pendingRecompute: Int?? = nil
     private var cancellables: Set<AnyCancellable> = []
     private var timer: Timer?
 
@@ -162,7 +164,16 @@ final class AppState: ObservableObject {
     /// Recompute days with data. `daysBack == nil` → every day since the oldest unsynced change
     /// (bounded to 45 days), otherwise the last N days.
     func recompute(daysBack: Int?, completion: (() -> Void)? = nil) {
-        guard !computing else { completion?(); return }
+        guard !computing else {
+            // Remember the widest request and run it right after the current pass.
+            switch (pendingRecompute, daysBack) {
+            case (.none, _): pendingRecompute = .some(daysBack)
+            case (.some(.some(let a)), .some(let b)): pendingRecompute = .some(max(a, b))
+            default: pendingRecompute = .some(nil)
+            }
+            completion?()
+            return
+        }
         computing = true
         let settings = self.settings
         let existing = computedDays
@@ -181,6 +192,7 @@ final class AppState: ObservableObject {
                     Task { @MainActor in
                         self.computing = false
                         completion?()
+                        self.runPendingRecompute()
                     }
                     return
                 }
@@ -232,8 +244,15 @@ final class AppState: ObservableObject {
                 self.computing = false
                 self.notifyRecoveryIfNeeded()
                 completion?()
+                self.runPendingRecompute()
             }
         }
+    }
+
+    private func runPendingRecompute() {
+        guard let pending = pendingRecompute else { return }
+        pendingRecompute = nil
+        recompute(daysBack: pending)
     }
 
     func recomputeAll() {
