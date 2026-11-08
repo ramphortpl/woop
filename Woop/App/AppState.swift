@@ -38,7 +38,8 @@ final class AppState: ObservableObject {
     private var computedDays: [String: DayMetrics] = [:]
     /// Days imported from the official WHOOP export (WHOOP's own scores).
     private(set) var importedDays: [String: DayMetrics] = [:]
-    private var recomputeScheduled = false
+    private var recomputeDeadline: Date?
+    private var recomputeToken = 0
     /// A recompute requested while one was running: `.some(nil)` = full, `.some(n)` = last n days.
     private var pendingRecompute: Int?? = nil
     private var cancellables: Set<AnyCancellable> = []
@@ -151,12 +152,16 @@ final class AppState: ObservableObject {
 
     // MARK: Recompute
 
+    /// Debounced full recompute; a sooner request replaces a later pending one.
     func scheduleRecompute(delay: TimeInterval) {
-        guard !recomputeScheduled else { return }
-        recomputeScheduled = true
+        let deadline = Date().addingTimeInterval(delay)
+        if let pending = recomputeDeadline, pending <= deadline { return }
+        recomputeDeadline = deadline
+        recomputeToken += 1
+        let token = recomputeToken
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            self.recomputeScheduled = false
+            guard let self, self.recomputeToken == token else { return }
+            self.recomputeDeadline = nil
             self.recompute(daysBack: nil)
         }
     }
