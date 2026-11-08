@@ -8,3 +8,7 @@ Woop/Resources/Info.plist
 *.ipa
 Payload/
 .DS_Store
+
+# SwiftPM (core tests)
+.build/
+.swiftpm/
