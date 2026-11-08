@@ -41,7 +41,8 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIBackgroundModes: [bluetooth-central]
+        UIBackgroundModes: [bluetooth-central, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.ramphortpl.woop.refresh]
         UIAppFonts:
           - BarlowSemiCondensed-Medium.ttf
           - BarlowSemiCondensed-SemiBold.ttf

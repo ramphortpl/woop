@@ -18,6 +18,10 @@ struct WoopApp: App {
         .onChange(of: scenePhase) { phase in
             strap.setForeground(phase == .active)
             if phase == .active { app.recompute(daysBack: 2) }
+            if phase == .background { app.scheduleBackgroundRefresh() }
+        }
+        .backgroundTask(.appRefresh(AppState.refreshTaskID)) {
+            await AppState.shared.backgroundRefresh()
         }
     }
 }

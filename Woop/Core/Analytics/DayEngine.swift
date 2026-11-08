@@ -161,7 +161,9 @@ enum DayEngine {
         var activities: [ActivityRecord] = []
         let users = inp.userActivities.filter { $0.end > cycleStart && $0.start < max(cycleEnd, $0.start + 1) && $0.start < nextStart + 12 * 3600 }
         for a in users {
-            activities.append(scoreActivity(a, samples: samples, rest: restHR, maxHR: maxHR, quiet: quiet, profile: profile))
+            // WHOOP-imported workouts keep WHOOP's own strain/HR/zones.
+            activities.append(a.source == .imported ? a
+                              : scoreActivity(a, samples: samples, rest: restHR, maxHR: maxHR, quiet: quiet, profile: profile))
         }
         if i1 > i0 {
             let minuteHR: [Double?] = (i0..<i1).map { series.hr($0) }

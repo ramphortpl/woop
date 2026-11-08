@@ -54,6 +54,9 @@ final class Database {
         CREATE TABLE IF NOT EXISTS day (
           date TEXT PRIMARY KEY, json TEXT NOT NULL, updated INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS imported_day (
+          date TEXT PRIMARY KEY, json TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS activity (
           id TEXT PRIMARY KEY, start INTEGER NOT NULL, json TEXT NOT NULL
         );
@@ -260,6 +263,37 @@ final class Database {
 
     func allDays() -> [DayMetrics] { days(from: "0000-00-00", to: "9999-99-99") }
 
+    // MARK: - Imported WHOOP days
+
+    func saveImportedDays(_ list: [DayMetrics]) {
+        queue.sync {
+            guard let st = prepare("INSERT OR REPLACE INTO imported_day (date,json) VALUES (?,?)") else { return }
+            defer { sqlite3_finalize(st) }
+            exec("BEGIN;")
+            for d in list {
+                guard let data = try? encoder.encode(d), let json = String(data: data, encoding: .utf8) else { continue }
+                sqlite3_reset(st)
+                sqlite3_bind_text(st, 1, d.date, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(st, 2, json, -1, SQLITE_TRANSIENT)
+                sqlite3_step(st)
+            }
+            exec("COMMIT;")
+        }
+    }
+
+    func importedDays() -> [DayMetrics] {
+        queue.sync {
+            guard let st = prepare("SELECT json FROM imported_day ORDER BY date") else { return [] }
+            defer { sqlite3_finalize(st) }
+            var out: [DayMetrics] = []
+            while sqlite3_step(st) == SQLITE_ROW {
+                guard let c = sqlite3_column_text(st, 0) else { continue }
+                if let d = try? decoder.decode(DayMetrics.self, from: Data(String(cString: c).utf8)) { out.append(d) }
+            }
+            return out
+        }
+    }
+
     // MARK: - Activities (manual / live)
 
     func saveActivity(_ a: ActivityRecord) {
@@ -313,7 +347,7 @@ final class Database {
 
     func wipeAll() {
         queue.sync {
-            exec("DELETE FROM sample; DELETE FROM event; DELETE FROM day; DELETE FROM activity;")
+            exec("DELETE FROM sample; DELETE FROM event; DELETE FROM day; DELETE FROM activity; DELETE FROM imported_day;")
             exec("VACUUM;")
         }
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MoreView: View {
     @EnvironmentObject var app: AppState
@@ -194,6 +195,8 @@ struct DataSettingsView: View {
     @State private var size: Int64 = 0
     @State private var confirmWipe = false
     @State private var calibration = 1.0
+    @State private var showImporter = false
+    @State private var importMessage: String?
 
     var body: some View {
         DetailScaffold(title: "Données et stockage") {
@@ -203,6 +206,17 @@ struct DataSettingsView: View {
                 row("Dernière donnée", stats.newest.map { Date(timeIntervalSince1970: TimeInterval($0)).formatted(date: .abbreviated, time: .shortened) } ?? "—")
                 row("Jours calculés", "\(app.days.count)")
                 row("Taille de la base", ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+            }
+            CardBox(title: "Importer depuis WHOOP") {
+                Text("Dans l'app WHOOP : Plus › Paramètres › Exporter les données. Tu reçois un e-mail avec un fichier .zip : enregistre-le dans Fichiers puis sélectionne-le ici. Tes jours passés affichent alors exactement les scores WHOOP et tes moyennes de référence sont calibrées immédiatement.")
+                    .font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { showImporter = true } label: {
+                    Text("Choisir l'export (.zip ou CSV)").wLabel(12.5, color: Theme.accentBlue)
+                }.buttonStyle(.plain)
+                if !app.importedDays.isEmpty {
+                    Text("\(app.importedDays.count) jours WHOOP importés").font(.system(size: 12)).foregroundColor(Theme.recoveryGreen)
+                }
             }
             CardBox(title: "Calibrage des pas") {
                 Stepper("Diviseur : \(Fmt.dec1(calibration))×", value: $calibration, in: 0.5...30, step: 0.1).foregroundColor(.white)
@@ -226,6 +240,22 @@ struct DataSettingsView: View {
             }
         }
         .onAppear(perform: refresh)
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.zip, .commaSeparatedText, .folder],
+                      allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                let s = app.importWhoopExport(urls: urls)
+                importMessage = s.days == 0 && s.workouts == 0
+                    ? "Aucune donnée WHOOP reconnue dans \(s.files) fichier(s)."
+                    : "\(s.days) jours et \(s.workouts) entraînements importés."
+                refresh()
+            case .failure(let e):
+                importMessage = "Import impossible : \(e.localizedDescription)"
+            }
+        }
+        .alert(importMessage ?? "", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+            Button("OK", role: .cancel) { importMessage = nil }
+        }
         .confirmationDialog("Supprimer toutes les données ?", isPresented: $confirmWipe, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 Database.shared.wipeAll()

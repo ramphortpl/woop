@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import BackgroundTasks
 
 /// Persistent user settings (UserDefaults, JSON).
 struct AppSettings: Codable, Equatable {
@@ -11,6 +12,7 @@ struct AppSettings: Codable, Equatable {
     var alarmEnabled = false
     var alarmMinute = 7 * 60
     var backgroundSync = true
+    var continuousHR = false
     var stepCalibration = 1.0
     var rawRetentionDays = 120
 }
@@ -31,6 +33,10 @@ final class AppState: ObservableObject {
     let strap = StrapManager.shared
     private let analyticsQueue = DispatchQueue(label: "woop.analytics", qos: .utility)
     private var demoSamples: [HistorySample] = []
+    /// Days computed on the phone from strap data.
+    private var computedDays: [String: DayMetrics] = [:]
+    /// Days imported from the official WHOOP export (WHOOP's own scores).
+    private(set) var importedDays: [String: DayMetrics] = [:]
     private var recomputeScheduled = false
     private var cancellables: Set<AnyCancellable> = []
     private var timer: Timer?
@@ -78,7 +84,10 @@ final class AppState: ObservableObject {
             loadStored()
             recompute(daysBack: 3)
         }
-        if settings.onboardingDone && !settings.demoMode { strap.start() }
+        if settings.onboardingDone && !settings.demoMode {
+            strap.start()
+            strap.setBackgroundLive(settings.continuousHR)
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.recompute(daysBack: 1) }
         }
@@ -108,8 +117,25 @@ final class AppState: ObservableObject {
         let all = Database.shared.allDays().filter { $0.algoVersion == DayMetrics.algoVersion }
         var map: [String: DayMetrics] = [:]
         for d in all { map[d.date] = d }
-        days = map
+        computedDays = map
+        var imp: [String: DayMetrics] = [:]
+        for d in Database.shared.importedDays() { imp[d.date] = d }
+        importedDays = imp
+        rebuildMerged()
         reloadActivities()
+    }
+
+    /// Publish computed days with WHOOP-imported scores layered on top.
+    func rebuildMerged() {
+        days = Self.merge(computedDays, importedDays)
+    }
+
+    nonisolated static func merge(_ computed: [String: DayMetrics], _ imported: [String: DayMetrics]) -> [String: DayMetrics] {
+        var out: [String: DayMetrics] = [:]
+        for k in Set(computed.keys).union(imported.keys) {
+            if let m = DayMetrics.merged(computed: computed[k], imported: imported[k]) { out[k] = m }
+        }
+        return out
     }
 
     func reloadActivities() {
@@ -132,11 +158,12 @@ final class AppState: ObservableObject {
 
     /// Recompute days with data. `daysBack == nil` → every day since the oldest unsynced change
     /// (bounded to 45 days), otherwise the last N days.
-    func recompute(daysBack: Int?) {
-        guard !computing else { return }
+    func recompute(daysBack: Int?, completion: (() -> Void)? = nil) {
+        guard !computing else { completion?(); return }
         computing = true
         let settings = self.settings
-        let existing = days
+        let existing = computedDays
+        let imported = settings.demoMode ? [:] : importedDays
         let demo = settings.demoMode ? demoSamples : nil
         let activities = userActivities
         analyticsQueue.async {
@@ -148,7 +175,10 @@ final class AppState: ObservableObject {
             } else {
                 let stats = Database.shared.sampleStats()
                 guard let o = stats.oldest else {
-                    Task { @MainActor in self.computing = false }
+                    Task { @MainActor in
+                        self.computing = false
+                        completion?()
+                    }
                     return
                 }
                 oldest = DayKey.key(unix: o)
@@ -179,7 +209,10 @@ final class AppState: ObservableObject {
                 } else {
                     samples = Database.shared.samples(from: from, to: to)
                 }
-                let hist = computed.values.filter { $0.date < key }.sorted { $0.date < $1.date }.suffix(60)
+                let floorKey = DayKey.adding(-60, to: key)
+                let hist = Self.merge(computed.filter { $0.key < key && $0.key >= floorKey },
+                                      imported.filter { $0.key < key && $0.key >= floorKey })
+                    .values.sorted { $0.date < $1.date }
                 var m = DayEngine.compute(DayInputs(date: key, samples: samples, profile: settings.profile,
                                                     history: Array(hist), userActivities: activities, now: now))
                 if let steps = m.steps { m.steps = Int((Double(steps) / max(0.5, settings.stepCalibration)).rounded()) }
@@ -191,16 +224,39 @@ final class AppState: ObservableObject {
             }
             let result = computed
             Task { @MainActor in
-                self.days = result
+                self.computedDays = result
+                self.rebuildMerged()
                 self.computing = false
+                completion?()
             }
         }
     }
 
     func recomputeAll() {
         guard !computing else { return }
-        days = [:]
+        computedDays = [:]
+        rebuildMerged()
         recompute(daysBack: 45)
+    }
+
+    // MARK: Background refresh
+
+    static let refreshTaskID = "com.ramphortpl.woop.refresh"
+
+    func scheduleBackgroundRefresh() {
+        guard settings.backgroundSync, !settings.demoMode else { return }
+        let req = BGAppRefreshTaskRequest(identifier: Self.refreshTaskID)
+        req.earliestBeginDate = Date(timeIntervalSinceNow: 20 * 60)
+        try? BGTaskScheduler.shared.submit(req)
+    }
+
+    /// Runs inside iOS's background refresh window: sync the strap, then rescore today.
+    func backgroundRefresh() async {
+        scheduleBackgroundRefresh()
+        _ = await strap.syncAndWait(timeout: 22)
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            recompute(daysBack: 2) { cont.resume() }
+        }
     }
 
     // MARK: Demo
@@ -211,7 +267,6 @@ final class AppState: ObservableObject {
             enableDemo()
         } else {
             demoSamples = []
-            days = [:]
             loadStored()
             recompute(daysBack: nil)
             if settings.onboardingDone { strap.start() }
@@ -219,7 +274,9 @@ final class AppState: ObservableObject {
     }
 
     private func enableDemo() {
-        days = [:]
+        computedDays = [:]
+        importedDays = [:]
+        rebuildMerged()
         computing = true
         analyticsQueue.async {
             let samples = DemoData.generate(days: 21)

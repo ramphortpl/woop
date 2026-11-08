@@ -113,6 +113,9 @@ final class StrapManager: NSObject, ObservableObject {
     private var qPairedID: UUID?
     private var found: [DiscoveredStrap] = []
     private var lastForeignTraffic = Date.distantPast
+    private var backgroundLive = false
+    private var drainWaiters: [(Bool) -> Void] = []
+    private var drainStarting = false
 
     private struct Waiter {
         let id: Int
@@ -214,6 +217,45 @@ final class StrapManager: NSObject, ObservableObject {
     /// Ask the strap for everything it has banked since the last sync.
     func syncNow() {
         queue.async { self.startDrain(reason: "manuel") }
+    }
+
+    /// Keep the realtime HR stream on while the app is in the background (continuous live data;
+    /// costs strap battery). Off by default.
+    func setBackgroundLive(_ on: Bool) {
+        queue.async {
+            self.backgroundLive = on
+            self.reconcileLive()
+        }
+    }
+
+    /// Start a sync (if connected) and wait for it to finish, up to `timeout` seconds.
+    /// Used by the background refresh task. Returns whether a drain completed.
+    func syncAndWait(timeout: TimeInterval) async -> Bool {
+        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            queue.async {
+                guard self.bootstrapped, let p = self.peripheral, p.state == .connected else {
+                    cont.resume(returning: false)
+                    return
+                }
+                var resumed = false
+                let finish: (Bool) -> Void = { ok in
+                    if resumed { return }
+                    resumed = true
+                    cont.resume(returning: ok)
+                }
+                let running = self.drain.ownDrainActive || self.drainStarting
+                if !running && !self.startDrain(reason: "arrière-plan") {
+                    // Nothing was started (another app is transferring, or not ready).
+                    finish(false)
+                    return
+                }
+                self.drainWaiters.append(finish)
+                self.queue.asyncAfter(deadline: .now() + timeout) {
+                    self.drainWaiters.removeAll()
+                    finish(false)
+                }
+            }
+        }
     }
 
     func setForeground(_ fg: Bool) {
@@ -328,6 +370,8 @@ final class StrapManager: NSObject, ObservableObject {
         w.forEach { $0.completion(nil) }
         if drain.ownDrainActive { drain.endOwnDrain() }
         drain = HistoryDrain(profile: bandProfile)
+        drainStarting = false
+        failDrainWaiters()
         publish { $0.syncing = false; $0.liveHR = nil }
     }
 
@@ -526,27 +570,38 @@ final class StrapManager: NSObject, ObservableObject {
         publish { $0.syncing = true; $0.syncedThisSession = 0 }
     }
 
-    private func startDrain(reason: String) {
-        guard bootstrapped, !drain.ownDrainActive else { return }
+    @discardableResult
+    private func startDrain(reason: String) -> Bool {
+        guard bootstrapped, !drain.ownDrainActive, !drainStarting else { return false }
         // Another app on this phone (e.g. the official one) is draining: bank its bursts instead.
         guard Date().timeIntervalSince(lastForeignTraffic) > 90 else {
             logLine("Transfert déjà en cours par une autre app — données récupérées au passage")
-            return
+            return false
         }
         logLine("Synchronisation de l'historique (\(reason))…")
         if generation == .gen4 {
             drain.beginOwnDrain()
             markDrainStarted()
             send(WhoopCommands.sendHistorical(seq: seq.nextLive(), profile: bandProfile))
-            return
+            return true
         }
+        drainStarting = true
         send(WhoopCommands.getDataRange(seq: seq.nextLive(), profile: bandProfile))
         queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            guard let self, self.bootstrapped else { return }
+            guard let self else { return }
+            self.drainStarting = false
+            guard self.bootstrapped else { return }
             self.drain.beginOwnDrain()
             self.markDrainStarted()
             self.send(WhoopCommands.sendHistorical(seq: self.seq.nextLive(), profile: self.bandProfile))
         }
+        return true
+    }
+
+    private func failDrainWaiters() {
+        let w = drainWaiters
+        drainWaiters.removeAll()
+        w.forEach { $0(false) }
     }
 
     private func maybeAutoSync(minInterval: TimeInterval) {
@@ -587,6 +642,7 @@ final class StrapManager: NSObject, ObservableObject {
             logLine("Trop d'échecs de transfert — synchronisation interrompue")
             send(WhoopCommands.abortHistorical(seq: seq.nextLive(), profile: bandProfile))
             drain.endOwnDrain()
+            failDrainWaiters()
             publish { $0.syncing = false }
         case .complete:
             let n = drain.totalSamples
@@ -596,6 +652,9 @@ final class StrapManager: NSObject, ObservableObject {
             UserDefaults.standard.set(now, forKey: Keys.lastSync)
             publish { $0.syncing = false; $0.lastSync = now }
             onDrainComplete?()
+            let waiters = drainWaiters
+            drainWaiters.removeAll()
+            waiters.forEach { $0(true) }
             reconcileLive()
         }
     }
@@ -604,7 +663,7 @@ final class StrapManager: NSObject, ObservableObject {
 
     private func reconcileLive() {
         guard bootstrapped, chars["cmdTo"] != nil else { return }
-        let want = (foreground || liveWanted)
+        let want = foreground || liveWanted || backgroundLive
         guard want != liveEnabledOnStrap else { return }
         send(WhoopCommands.toggleRealtimeHR(seq: seq.nextLive(), on: want, profile: bandProfile))
         liveEnabledOnStrap = want
@@ -725,6 +784,7 @@ final class StrapManager: NSObject, ObservableObject {
                 logLine("Synchronisation inactive — interrompue, reprise plus tard")
                 send(WhoopCommands.abortHistorical(seq: seq.nextLive(), profile: bandProfile))
                 drain.endOwnDrain()
+                failDrainWaiters()
                 publish { $0.syncing = false }
             }
             return
@@ -813,12 +873,19 @@ extension StrapManager: CBCentralManagerDelegate {
         let wasReady = bootstrapped
         resetLink()
         if let e = error { logLine("Déconnecté : \(e.localizedDescription)") } else { logLine("Déconnecté") }
-        if qPairedID != nil || userInitiatedConnect {
-            if case .failed = qState {} else { setState(wasReady ? .connecting : .idle) }
+        let failed: Bool = { if case .failed = qState { return true } else { return false } }()
+        if qPairedID != nil {
+            // Known strap: keep a pending connection so it comes back whenever in range.
+            if !failed { setState(wasReady ? .connecting : .idle) }
+            scheduleReconnect(peripheral)
+        } else if userInitiatedConnect && !failed {
+            setState(.connecting)
             scheduleReconnect(peripheral)
         } else {
+            // First pairing failed: wait for the user to try again (no repeated pairing prompts).
             self.peripheral = nil
-            setState(.idle)
+            userInitiatedConnect = false
+            if !failed { setState(.idle) }
         }
     }
 

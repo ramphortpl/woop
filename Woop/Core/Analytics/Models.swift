@@ -88,7 +88,7 @@ struct SleepSession: Codable, Equatable, Sendable, Identifiable {
 
 /// A workout / activity inside a day.
 struct ActivityRecord: Codable, Equatable, Sendable, Identifiable {
-    enum Source: String, Codable, Sendable { case auto, manual, live }
+    enum Source: String, Codable, Sendable { case auto, manual, live, imported }
 
     var id: String
     var sport: String
@@ -113,6 +113,8 @@ struct DayMetrics: Codable, Equatable, Sendable {
 
     var date: String
     var algoVersion: Int = DayMetrics.algoVersion
+    /// Carries scores imported from the official WHOOP export.
+    var imported: Bool = false
     var computedAt: Int = 0
     var cycleStart: Int?
     var cycleEnd: Int?

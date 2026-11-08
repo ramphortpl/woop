@@ -29,6 +29,22 @@ struct DeviceView: View {
                         Text("Synchroniser maintenant").wLabel(13, color: Theme.accentBlue)
                     }.buttonStyle(.plain).disabled(!strap.state.isConnected)
                 }
+                CardBox(title: "Arrière-plan") {
+                    Toggle(isOn: Binding(get: { app.settings.backgroundSync }, set: { app.settings.backgroundSync = $0 })) {
+                        Text("Synchronisation périodique").font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                    }
+                    Toggle(isOn: Binding(get: { app.settings.continuousHR }, set: {
+                        app.settings.continuousHR = $0
+                        strap.setBackgroundLive($0)
+                    })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Fréquence cardiaque en continu").font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                            Text("Garde le flux en direct même app fermée (consomme plus de batterie du bracelet).")
+                                .font(.system(size: 11)).foregroundColor(Theme.textTertiary)
+                        }
+                    }
+                }
+                .tint(Theme.recoveryGreen)
                 CardBox(title: "Actions") {
                     Button { strap.buzz() } label: { Label("Faire vibrer le bracelet", systemImage: "waveform") }
                         .disabled(!strap.state.isConnected)
