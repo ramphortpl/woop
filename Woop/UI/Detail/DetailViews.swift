@@ -52,7 +52,10 @@ struct DetailScaffold<Content: View>: View {
                     }
                     .onAppear {
                         guard let id = scrollTo else { return }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { proxy.scrollTo(id, anchor: .top) }
+                        // The target may only exist once the day is computed: try a few times.
+                        for delay in [3.0, 8, 13, 18] {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { proxy.scrollTo(id, anchor: .top) }
+                        }
                     }
                 }
             }

@@ -97,8 +97,24 @@ final class Notifier: NSObject, ObservableObject, UNUserNotificationCenterDelega
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        Self.applyFonts()
         Notifier.shared.setup()
         AppState.shared.start()
         return true
+    }
+
+    /// System bars (sport picker, pickers) in the app's typefaces.
+    private static func applyFonts() {
+        func font(_ name: String, _ size: CGFloat, _ fallback: UIFont.Weight) -> UIFont {
+            UIFont(name: name, size: size) ?? .systemFont(ofSize: size, weight: fallback)
+        }
+        let nav = UINavigationBar.appearance()
+        nav.titleTextAttributes = [.font: font("Figtree-SemiBold", 17, .semibold), .foregroundColor: UIColor.white]
+        nav.largeTitleTextAttributes = [.font: font("Figtree-SemiBold", 30, .semibold), .foregroundColor: UIColor.white]
+        let item = UIBarButtonItem.appearance()
+        item.setTitleTextAttributes([.font: font("Figtree-Medium", 16, .medium)], for: .normal)
+        item.setTitleTextAttributes([.font: font("Figtree-Medium", 16, .medium)], for: .highlighted)
+        let seg = UISegmentedControl.appearance()
+        seg.setTitleTextAttributes([.font: font("Montserrat-SemiBold", 12, .semibold)], for: .normal)
     }
 }

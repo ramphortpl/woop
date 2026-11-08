@@ -67,7 +67,8 @@ struct DashboardCustomizeView: View {
             LinearGradient(stops: [.init(color: Theme.bgBottom.opacity(0), location: 0),
                                    .init(color: Theme.bgBottom.opacity(0.95), location: 0.55),
                                    .init(color: Theme.bgBottom, location: 1)], startPoint: .top, endPoint: .bottom)
-                .frame(height: 150)
+                .frame(height: 170)
+                .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
             OutlineButton(title: "Enregistrer") {
                 app.settings.dashboard = selected

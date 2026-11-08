@@ -357,32 +357,46 @@ struct QualityLegend: View {
     }
 }
 
-/// One line of a breakdown card: icon, label, state bar, value.
+/// One line of a breakdown card: icon, label, state bar, value. Measured on WHOOP: the value
+/// ends 4 pt from the card's inner edge and the 63 pt bar 14 pt before the value column, so the
+/// bars line up from one row to the next.
 struct BreakdownRow: View {
     var icon: String
     var title: String
     var value: String
+    var unit: String = ""
     var state: QualityState?
     var trend: (up: Bool, good: Bool?)? = nil
+    var valueWidth: CGFloat = 42
 
     var body: some View {
         HStack(spacing: 0) {
             Image(systemName: icon).font(.system(size: 16, weight: .light)).foregroundColor(Color(hex: 0x8E8F93))
                 .frame(width: 22)
-            Text(title).wLabel(12)
+            Text(title)
+                .font(WFont.label(11.4, weight: .semibold)).tracking(0.25).textCase(.uppercase)
+                .foregroundColor(.white)
                 .lineLimit(2).minimumScaleFactor(0.85)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 12)
             Spacer(minLength: 8)
-            if state != nil || trend == nil { SegmentBar(state: state) }
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                if let trend { TrendArrow(up: trend.up, good: trend.good) }
-                Text(value).font(WFont.number(21.5, weight: .bold)).foregroundColor(.white)
-                    .lineLimit(1).minimumScaleFactor(0.7)
+            if let state {
+                SegmentBar(state: state).padding(.trailing, 14)
             }
-            .frame(width: 70, alignment: .trailing)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                if let trend { TrendArrow(up: trend.up, good: trend.good).padding(.trailing, 2) }
+                Text(value).font(WFont.number(21.5, weight: .bold)).foregroundColor(.white)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                if !unit.isEmpty && value != "—" {
+                    Text(unit).font(WFont.text(10.5, weight: .medium)).foregroundColor(Theme.textSecondary)
+                }
+            }
+            .frame(minWidth: valueWidth, alignment: .trailing)
+            .fixedSize(horizontal: state == nil, vertical: false)
+            .frame(width: state == nil ? nil : valueWidth, alignment: .trailing)
         }
+        .padding(.trailing, 4)
         .frame(minHeight: 63)
     }
 }

@@ -342,19 +342,19 @@ struct RecoveryDetailView: View {
         let respBase = app.average30(before: date) { $0.respRate }
         return PointerCard {
             BreakdownRow(icon: "waveform.path.ecg", title: "Variabilité de la fréquence cardiaque",
-                         value: d.hrv.map { "\(Fmt.int($0)) ms" } ?? "—",
-                         state: ratioState(d.hrv, hrvBase, higher: true))
+                         value: Fmt.int(d.hrv), unit: "ms",
+                         state: ratioState(d.hrv, hrvBase, higher: true), valueWidth: 56)
             Rectangle().fill(Theme.separator).frame(height: 1)
             BreakdownRow(icon: "heart", title: "Fréquence cardiaque au repos",
-                         value: d.rhr.map { "\(Fmt.int($0)) bpm" } ?? "—",
-                         state: ratioState(d.rhr, rhrBase, higher: false))
+                         value: Fmt.int(d.rhr), unit: "bpm",
+                         state: ratioState(d.rhr, rhrBase, higher: false), valueWidth: 56)
             Rectangle().fill(Theme.separator).frame(height: 1)
             BreakdownRow(icon: "lungs", title: "Fréquence respiratoire",
-                         value: d.respRate.map { "\(Fmt.dec1($0))" } ?? "—",
-                         state: respState(d.respRate, respBase))
+                         value: Fmt.dec1(d.respRate), unit: "rpm",
+                         state: respState(d.respRate, respBase), valueWidth: 56)
             Rectangle().fill(Theme.separator).frame(height: 1)
             BreakdownRow(icon: "moon", title: "Performance du sommeil", value: Fmt.pct(d.sleepPerformance),
-                         state: .higher(d.sleepPerformance, sufficient: 70, optimal: 85))
+                         state: .higher(d.sleepPerformance, sufficient: 70, optimal: 85), valueWidth: 56)
             QualityLegend().padding(.top, 8)
         }
     }
@@ -480,14 +480,15 @@ struct StrainDetailView: View {
         }
         return PointerCard {
             BreakdownRow(icon: "scope", title: "Effort optimal",
-                         value: target.map { "\(Fmt.dec1($0.lowerBound))–\(Fmt.dec1($0.upperBound))" } ?? "—", state: state)
+                         value: target.map { "\(Fmt.dec1($0.lowerBound))–\(Fmt.dec1($0.upperBound))" } ?? "—", state: state,
+                         valueWidth: 80)
             Rectangle().fill(Theme.separator).frame(height: 1)
-            BreakdownRow(icon: "flame", title: "Calories", value: Fmt.int(d.calories), state: nil, trend: trend(d.calories, calBase))
+            BreakdownRow(icon: "flame", title: "Calories", value: Fmt.int(d.calories), unit: "kcal", state: nil, trend: trend(d.calories, calBase))
             Rectangle().fill(Theme.separator).frame(height: 1)
-            BreakdownRow(icon: "heart", title: "FC moyenne", value: d.avgHR.map { "\(Fmt.int($0)) bpm" } ?? "—", state: nil,
+            BreakdownRow(icon: "heart", title: "FC moyenne", value: Fmt.int(d.avgHR), unit: "bpm", state: nil,
                          trend: trend(d.avgHR, hrBase))
             Rectangle().fill(Theme.separator).frame(height: 1)
-            BreakdownRow(icon: "bolt.heart", title: "FC max", value: d.maxHR.map { "\($0) bpm" } ?? "—", state: nil, trend: nil)
+            BreakdownRow(icon: "bolt.heart", title: "FC max", value: d.maxHR.map { "\($0)" } ?? "—", unit: "bpm", state: nil, trend: nil)
             Rectangle().fill(Theme.separator).frame(height: 1)
             BreakdownRow(icon: "shoeprints.fill", title: "Pas", value: Fmt.int(d.steps.map(Double.init)), state: nil,
                          trend: trend(d.steps.map(Double.init), stepsBase))
@@ -551,6 +552,12 @@ struct MetricListEditor: View {
                 .scrollContentBackground(.hidden)
                 .environment(\.editMode, .constant(.active))
             }
+            LinearGradient(stops: [.init(color: Theme.bgBottom.opacity(0), location: 0),
+                                   .init(color: Theme.bgBottom.opacity(0.95), location: 0.55),
+                                   .init(color: Theme.bgBottom, location: 1)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 150)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
             OutlineButton(title: "Enregistrer") {
                 onSave(selection)
                 dismiss()
