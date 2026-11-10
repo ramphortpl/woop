@@ -52,7 +52,9 @@ calée sur de vrais chiffres WHOOP.
 > historique qu'après que l'app WHOOP officielle y a déposé son jeton d'abonnement signé (valable
 > environ 45 jours). Aucune app tierce ne peut créer ce jeton. Si Woop est connecté mais ne reçoit
 > plus rien : ouvre l'app WHOOP une fois, laisse-la se connecter au bracelet, puis resynchronise.
-> C'est aussi l'app officielle qui installe les mises à jour de firmware.
+> C'est aussi l'app officielle qui installe les mises à jour de firmware. En attendant, l'option
+> *Fréquence cardiaque en continu* (Plus › Mon bracelet) laisse Woop enregistrer le cœur en direct
+> tant qu'il est connecté : sommeil, VFC et effort restent calculables, sans mouvement ni température.
 
 ## Nouveautés de la 1.1
 
