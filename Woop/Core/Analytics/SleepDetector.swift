@@ -951,17 +951,15 @@ enum SleepSpine {
             if overnight && (!onlyBouts || anchored) { return true }
         }
         guard anchored else { return false }
-        if gap <= nightAwakeMaxMin * 60,
-           ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: nightWindowLagS, tz: tz) {
-            let morning = ctx.habit.isMorning(prevEnd, lead: nightWindowLeadS, margin: morningMarginS, tz: tz)
-            if morning ? activity() == .quiet : activity() != .upAndAbout { return true }
-        }
-        if gap <= nightInsomniaMaxMin * 60,
-           ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: 0, tz: tz),
-           activity() != .upAndAbout {
-            return true
-        }
-        return false
+        let inWindow = gap <= nightAwakeMaxMin * 60
+            && ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: nightWindowLagS, tz: tz)
+        let inCore = gap <= nightInsomniaMaxMin * 60
+            && ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: 0, tz: tz)
+        guard inWindow || inCore else { return false }
+        // In the night, anything but "got up and went" is an awakening. From an hour before the
+        // usual wake time, getting up is the likelier story: only a known quiet wait counts.
+        let morning = ctx.habit.isMorning(prevEnd, lead: nightWindowLeadS, margin: morningMarginS, tz: tz)
+        return morning ? activity() == .quiet : activity() != .upAndAbout
     }
 
     /// Chain runs into nights: the time between two chained runs is an awakening inside one
@@ -991,33 +989,49 @@ enum SleepSpine {
     ///   the onset of its night earlier, which asks for stronger proof.
     static func assembleNights(runs: [SleepRun], bouts: [SleepRun], _ ctx: NightContext,
                                evidence: (_ bout: SleepRun, _ leading: Bool) -> Bool) -> [NightGroup] {
-        var accepted = runs
-        var pending = bouts.sorted { $0.start < $1.start }
+        // The spine's full runs make the nights; short sleeps (its own short tails, already
+        // judged, and the detector's bouts) are then added to the night they continue. A night
+        // is never split by what is added to it.
+        var nights = groupNights(runs.filter { !$0.bout }, ctx)
+        let tails = Set(runs.filter(\.bout).map(\.start))
+        var pending = (runs.filter(\.bout) + bouts).sorted { $0.start < $1.start }
         var changed = true
         while changed && !pending.isEmpty {
             changed = false
-            let nights = groupNights(accepted, ctx)
             var rest: [SleepRun] = []
             for b in pending {
-                let prev = nights.last { $0.start <= b.start }
-                let next = nights.first { $0.start > b.start }
-                var attaches = false, leading = false
-                if let prev, b.start < prev.end {
-                    attaches = true // inside one of the night's awakenings
-                } else if let prev, continuesNight(prev, nextStart: b.start, nextIsBout: true, ctx) {
-                    attaches = true
-                } else if let next, continuesNight(NightGroup(runs: [b]), nextStart: next.start, nextIsBout: false, ctx) {
-                    attaches = true
+                let pi = nights.lastIndex { $0.start <= b.start }
+                let ni = nights.firstIndex { $0.start > b.start }
+                var target: Int?
+                var leading = false
+                if let pi, b.start < nights[pi].end {
+                    target = pi // inside one of the night's awakenings
+                } else if let pi, continuesNight(nights[pi], nextStart: b.start, nextIsBout: true, ctx) {
+                    target = pi
+                } else if let ni, continuesNight(NightGroup(runs: [b]), nextStart: nights[ni].start, nextIsBout: false, ctx) {
+                    target = ni
                     leading = true
                 }
-                if attaches {
-                    if evidence(b, leading) { accepted.append(b) }
-                    changed = true
-                } else {
-                    rest.append(b)
-                }
+                guard let t = target else { rest.append(b); continue }
+                changed = true
+                // Quiet wakefulness next to the night counts nowhere: neither night nor nap.
+                guard tails.contains(b.start) || evidence(b, leading) else { continue }
+                nights[t].runs.append(b)
+                nights[t].runs.sort { $0.start < $1.start }
             }
             pending = rest
+            // A night that grew may now reach the next one.
+            var i = 1
+            while i < nights.count {
+                let next = nights[i]
+                if continuesNight(nights[i - 1], nextStart: next.start, nextIsBout: next.runs.allSatisfy(\.bout), ctx) {
+                    nights[i - 1].runs.append(contentsOf: next.runs)
+                    nights[i - 1].runs.sort { $0.start < $1.start }
+                    nights.remove(at: i)
+                } else {
+                    i += 1
+                }
+            }
         }
         // Short sleeps away from any night: naps (two of them under an hour apart are one).
         var naps: [NightGroup] = []
@@ -1029,7 +1043,7 @@ enum SleepSpine {
                 naps.append(NightGroup(runs: [b]))
             }
         }
-        return (groupNights(accepted, ctx) + naps).sorted { $0.start < $1.start }
+        return (nights + naps).sorted { $0.start < $1.start }
     }
 
     static func circularDistance(_ a: Int, _ b: Int) -> Int {

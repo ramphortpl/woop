@@ -180,6 +180,26 @@ final class NightAwakeningTests: XCTestCase {
         XCTAssertGreaterThan(d.zoneSeconds.reduce(0, +), Int(16.6 * 3600))
     }
 
+    /// Up at 03:00, pacing the flat (1 200 steps), a doze on the sofa, back to bed at 04:25:
+    /// the doze must not cut the night in two — it is one night with an awakening in it.
+    func testADozeDuringAnAwakeningDoesNotSplitTheNight() {
+        let d = compute([
+            Block(from: -10, to: -1, kind: .active),
+            Block(from: -1, to: 3, kind: .sleep),
+            Block(from: 3, to: 3.67, kind: .active, steps: 30),
+            Block(from: 3.67, to: 4.1, kind: .sleep),
+            Block(from: 4.1, to: 4.4, kind: .active, steps: 5),
+            Block(from: 4.4, to: 7.5, kind: .sleep),
+            Block(from: 7.5, to: 23, kind: .active, steps: 8),
+        ])
+        show("doze-in-awakening", d)
+        let s = d.sleep!
+        XCTAssertEqual(hours(s.start), -1, accuracy: 0.25)
+        XCTAssertEqual(hours(s.end), 7.5, accuracy: 0.25)
+        XCTAssertGreaterThan(s.asleepSec, Int(6.8 * 3600))
+        XCTAssertTrue(d.naps.isEmpty)
+    }
+
     /// Same nights on a strap without its own sleep/wake state (WHOOP 4.0, or an envelope that
     /// never reports "asleep"): the heart rate against the sleeping level decides alone.
     func testReturnsToSleepWithoutTheStrapEnvelope() {
