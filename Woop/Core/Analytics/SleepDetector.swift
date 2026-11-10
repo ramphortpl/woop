@@ -94,6 +94,11 @@ enum SleepSpine {
     /// "asleep" for at least this long somewhere in the window. A strap (or firmware) that never
     /// leaves "wake" says nothing about any particular stretch.
     static let bandAliveSleepSec = 30 * 60
+    // Edge refinement.
+    static let edgeProbeSamples = 30
+    static let edgeStillFraction = 0.8
+    static let edgeMaxExtendSec = 8 * 60
+    static let edgeMaxStepSec = 5
     // Heart-rate-only spine.
     static let hrOnlyAnchorPercentile = 0.10
     static let hrOnlyBandMult = 1.05
@@ -260,10 +265,11 @@ enum SleepSpine {
         if gTs.count >= 2 {
             let sparse = isGravitySparse(gTs: gTs, hr: hr)
             out.gravitySparse = sparse
-            let flags = classifyStill(gTs: gTs, gx: gx, gy: gy, gz: gz)
-            var periods = buildRuns(gTs: gTs, flags: flags, sparse: sparse, hr: hr, baseline: out.hrBaseline)
+            let still = classifyStill(gTs: gTs, gx: gx, gy: gy, gz: gz)
+            var periods = buildRuns(gTs: gTs, flags: still.flags, sparse: sparse, hr: hr, baseline: out.hrBaseline)
             periods = mergePeriods(periods)
             periods = bridgeFragments(periods, sparse: sparse, hr: hr, baseline: out.hrBaseline)
+            periods = refineEdges(periods, gTs: gTs, stillPrefix: still.stillPrefix)
             runs = acceptRuns(periods, hr: hr, baseline: out.hrBaseline, tz: tz, wristOff: wristOff,
                               gTs: gTs, gx: gx, gy: gy, gz: gz, bandTs: bandTs, bandState: bandState)
         }
@@ -327,11 +333,12 @@ enum SleepSpine {
         return largest > maxGapMin * 60
     }
 
-    /// Per-sample "inside a still window" flags.
-    static func classifyStill(gTs: [Int], gx: [Float], gy: [Float], gz: [Float]) -> [Bool] {
+    /// Per-sample "inside a still window" flags, plus the running count of still samples
+    /// (`stillPrefix[i]` = still samples before index i) for edge refinement.
+    static func classifyStill(gTs: [Int], gx: [Float], gy: [Float], gz: [Float]) -> (flags: [Bool], stillPrefix: [Int32]) {
         let n = gTs.count
         guard n >= 2, let cadence = medianInterval(gTs), cadence <= maxStillCadenceSec else {
-            return [Bool](repeating: false, count: n)
+            return ([Bool](repeating: false, count: n), [Int32](repeating: 0, count: n + 1))
         }
         let window = max(minWindowSamples, Int(Double(stillWindowMin * 60) / cadence))
         let half = window / 2
@@ -350,7 +357,41 @@ enum SleepSpine {
             let lo = max(0, i - half), hi = min(n, i + half + 1)
             flags[i] = Double(prefix[hi] - prefix[lo]) / Double(hi - lo) >= stillFraction
         }
-        return flags
+        return (flags, prefix)
+    }
+
+    /// The 15-minute window rounds every run off: it only turns "sleep" ~3 minutes after the
+    /// wrist went still and turns back ~3 minutes before it moved again. Walk each edge back out
+    /// to where the stillness really starts and stops (the adjoining half-minute must itself be
+    /// ≥ 80 % still), by at most 8 minutes and never across a recording gap.
+    static func refineEdges(_ periods: [Period], gTs: [Int], stillPrefix: [Int32]) -> [Period] {
+        let n = gTs.count
+        guard n >= 2, stillPrefix.count == n + 1 else { return periods }
+        let span = edgeProbeSamples
+        var out = periods
+        for k in out.indices where out[k].sleep {
+            var a = TimeIndex.lowerBound(gTs, out[k].start) { $0 }
+            var b = TimeIndex.lowerBound(gTs, out[k].end + 1) { $0 } - 1
+            guard a < n, b >= a else { continue }
+            let startTs = gTs[a], endTs = gTs[b]
+            let floorTs = k > 0 && out[k - 1].sleep ? out[k - 1].end + 1 : Int.min
+            while a > 0, startTs - gTs[a - 1] <= edgeMaxExtendSec, gTs[a] - gTs[a - 1] <= edgeMaxStepSec,
+                  gTs[a - 1] >= floorTs {
+                let lo = max(0, a - span)
+                guard Double(stillPrefix[a] - stillPrefix[lo]) >= edgeStillFraction * Double(a - lo) else { break }
+                a -= 1
+            }
+            let ceilTs = k + 1 < out.count && out[k + 1].sleep ? out[k + 1].start - 1 : Int.max
+            while b + 1 < n, gTs[b + 1] - endTs <= edgeMaxExtendSec, gTs[b + 1] - gTs[b] <= edgeMaxStepSec,
+                  gTs[b + 1] <= ceilTs {
+                let hi = min(n, b + 1 + span)
+                guard Double(stillPrefix[hi] - stillPrefix[b + 1]) >= edgeStillFraction * Double(hi - b - 1) else { break }
+                b += 1
+            }
+            out[k].start = gTs[a]
+            out[k].end = gTs[b]
+        }
+        return out
     }
 
     /// Mean heart rate across `[a, b]` within the sleep band (a short gap only).
