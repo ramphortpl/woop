@@ -6,9 +6,9 @@ la récupération et l'effort, avec une interface calquée sur l'app WHOOP.
 
 Aucun compte, aucun cloud : tout reste sur ton téléphone.
 
-## Télécharger l'IPA — version 1.1.0
+## Télécharger l'IPA — version 1.2.0
 
-**➜ https://github.com/ramphortpl/woop/releases/download/v1.1.0/Woop.ipa**
+**➜ https://github.com/ramphortpl/woop/releases/download/v1.2.0/Woop.ipa**
 
 Toutes les versions : [page des releases](https://github.com/ramphortpl/woop/releases).
 Chaque modification du code reconstruit aussi l'application (GitHub Actions, macOS) ; la toute
@@ -17,6 +17,42 @@ https://github.com/ramphortpl/woop/releases/download/ipa-latest/Woop.ipa
 
 L'IPA n'est pas signée : ouvre le lien depuis ton iPhone ou colle-le dans ton signer
 (ESign, Feather, Scarlet, Sideloadly, AltStore…), signe-la puis installe-la.
+
+## Nouveautés de la 1.2 — des chiffres plus justes
+
+Toute la chaîne de calcul a été reprise en **combinant ce que noop et OpenStrap font de mieux**, et
+calée sur de vrais chiffres WHOOP.
+
+- **Sommeil** — nouvelle détection : immobilité du poignet confirmée par la fréquence cardiaque,
+  l'état « endormi » du bracelet ne servant plus qu'à confirmer et à couper une grasse matinée.
+  Une nuit n'est **plus coupée en deux** par un réveil de 20–30 min (défaut de la 1.1), les trous
+  d'enregistrement ne comptent ni comme sommeil ni comme éveil, une soirée immobile devant un film
+  ou un matin au bureau ne sont plus pris pour du sommeil, les siestes ont leur propre détection.
+  Bouton **Corriger les heures de sommeil** si la détection se trompe (comme « Modifier » sur WHOOP).
+- **Score de sommeil** comme WHOOP aujourd'hui : heures par rapport aux besoins, régularité,
+  efficacité et stress pendant le sommeil (une vraie nuit WHOOP à 70 % / 54 % / 97 % / 0 % donne
+  bien 76 %). Dette de sommeil : 55 % du manque reporté sur la nuit suivante.
+- **VFC** — les battements manquants ne créent plus de faux écarts (c'est ce qui gonflait la VFC de
+  50 à 100 % sur WHOOP 5.0 / MG) ; moyenne des fenêtres de 5 minutes de la nuit, comme les deux
+  projets de référence. **FC au repos** : plus basse demi-heure de la nuit.
+- **Effort** — nouvelle échelle logarithmique, vérifiée sur une vraie journée WHOOP (vélo 12,6 +
+  randonnée 4,1 → journée 12,8) : une journée ne grimpe presque plus après une grosse séance, et une
+  journée calme tourne autour de 5–7. **Zones de FC** sur la réserve cardiaque, comme WHOOP.
+- **Calibrage sur TES données WHOOP** (*Plus › Importer depuis WHOOP*) : à partir de ton export, Woop
+  apprend comment WHOOP calcule *ta* récupération, ton score et ton besoin de sommeil, ta dette, ton
+  échelle d'effort, tes calories et ta répartition habituelle des phases ; chaque réglage n'est gardé
+  que s'il prédit mieux tes chiffres WHOOP que le réglage par défaut. Les nuits mesurées à la fois par
+  WHOOP et par Woop servent à aligner la VFC et la FC au repos.
+- **Récupération des données** — la synchro ne tourne plus en boucle quand le bracelet ne répond
+  pas (pause croissante), transfert toutes les 5 minutes app ouverte, nouvelle carte **Qualité des
+  données** (heures réellement reçues du bracelet chaque jour) et avertissement firmware (voir
+  ci-dessous).
+
+> **Firmware 50.43 et suivants (WHOOP 5.0 / MG).** Des bracelets mis à jour ne livrent leur
+> historique qu'après que l'app WHOOP officielle y a déposé son jeton d'abonnement signé (valable
+> environ 45 jours). Aucune app tierce ne peut créer ce jeton. Si Woop est connecté mais ne reçoit
+> plus rien : ouvre l'app WHOOP une fois, laisse-la se connecter au bracelet, puis resynchronise.
+> C'est aussi l'app officielle qui installe les mises à jour de firmware.
 
 ## Nouveautés de la 1.1
 
@@ -51,8 +87,10 @@ L'IPA n'est pas signée : ouvre le lien depuis ton iPhone ou colle-le dans ton s
    bracelet dans *Réglages › Bluetooth* et recommence.
 
 La première synchronisation récupère tout l'historique stocké dans le bracelet (plusieurs jours) :
-compte quelques minutes. Ensuite Woop resynchronise à l'ouverture et toutes les 15 minutes quand il est
-connecté. La **récupération** apparaît après 4 nuits de calibrage, comme sur WHOOP.
+compte quelques minutes. Ensuite Woop resynchronise à l'ouverture, toutes les 5 minutes tant que l'app
+est ouverte et toutes les 15 minutes sinon. La **récupération** apparaît après 4 nuits de calibrage,
+comme sur WHOOP. *Plus › Mon bracelet › Qualité des données* montre combien d'heures le bracelet a
+réellement livrées chaque jour : un jour avec des trous est noté sur ce qui est arrivé.
 
 ### Récupérer ton historique WHOOP (recommandé)
 
@@ -70,6 +108,9 @@ WHOOP t'envoie un e-mail avec un fichier `.zip`. Puis, au choix (*Plus › Impor
 
 Les jours passés affichent alors **exactement les scores WHOOP** (récupération, effort, sommeil,
 entraînements) et tes moyennes de référence sont calibrées immédiatement, sans attendre 4 nuits.
+Woop en tire aussi son **calibrage personnel** (voir les nouveautés de la 1.2) : plus l'export couvre
+de nuits, mieux les jours suivants collent à ce que WHOOP aurait affiché. Réimporte un export de
+temps en temps : les nuits mesurées par les deux servent à aligner la VFC et la FC au repos.
 Les exports en français et en anglais sont reconnus, même réenregistrés par Numbers ou Excel.
 
 ### Notifications (comme WHOOP)
@@ -100,27 +141,33 @@ Pas encore de bracelet sous la main ? *Plus › Mode démo* affiche l'interface 
 |---|---|
 | **Accueil** | Anneaux Sommeil / Récupération / Effort, sélecteur de jour, série 🔥, batterie du bracelet, *Perspectives quotidiennes*, *Activités du jour* (sommeil, siestes, entraînements), *Sommeil de ce soir* (heure de coucher recommandée, alarme), *Mon tableau de bord* |
 | **Personnaliser le tableau de bord** | Les 25 indicateurs de WHOOP (VFC, FC au repos, pas, zones de FC hebdo, VO₂ max, calories, effort et récupération, poids, temps de musculation, dette/efficacité/régularité du sommeil, fréquence respiratoire, sommeil réparateur…), réorganisables |
-| **Sommeil** | Anneau « Votre sommeil », analyse Insuffisant / Suffisant / Optimal, FC pendant la nuit, phases (réveil, léger, SOL, SP) vs ta plage habituelle, sommeil réparateur, tendances 7 jours vs 30 jours, latence, perturbations, cycles, dette |
+| **Sommeil** | Anneau « Votre sommeil », analyse Insuffisant / Suffisant / Optimal, FC pendant la nuit, phases (réveil, léger, SOL, SP) vs ta plage habituelle, sommeil réparateur, tendances 7 jours vs 30 jours, latence, perturbations, cycles, dette, correction manuelle des heures |
 | **Récupération** | Score 0–100 % (vert / jaune / rouge), VFC, FC au repos, respiration et sommeil vs tes moyennes 30 j, tendances |
 | **Effort** | Score 0–21 avec l'effort optimal du jour, FC de la journée, activités, zones de FC, calories, pas, tendances |
 | **Commencer l'activité** | Carte, suivi d'itinéraire GPS, BPM en direct, objectif d'effort, effort / calories / distance en direct |
 | **Activités** | Plus de 150 sports (raquette, collectifs, combat, nautiques, hiver, fitness…), recherche, récents, détection automatique, FC par zones et parcours |
 | **Santé** | Moniteur de santé : FC au repos, VFC, respiration, SpO₂ (estimation), température cutanée vs ta norme |
 | **Communauté** | Série, résumé de la semaine, records, défis (hors ligne) |
-| **Plus** | Profil, bracelet (état, batterie, firmware, synchro, vibration, journal Bluetooth), réglages, données |
+| **Plus** | Profil, bracelet (état, batterie, firmware, synchro, qualité des données, vibration, journal Bluetooth), import et calibrage WHOOP, réglages, données |
 | **Coach (W)** | Réponses calculées localement à partir de tes données |
 
 ## Comment c'est construit
 
-Woop combine les deux projets demandés :
+Woop combine les deux projets demandés, en prenant pour chaque brique la méthode la plus solide :
 
-- **[OpenStrap/edge](https://github.com/OpenStrap/edge)** (et ses bibliothèques `protocol` / `analytics`) :
-  la séquence de connexion WHOOP 5.0 qui fonctionne (abonnements 0003 → 0007 → 0005 → 0004, HELLO 0x91
-  obligatoire, contrat d'horloge), le décodage des enregistrements v18 (FC, intervalles R-R, mouvement,
-  pas, température cutanée, état de sommeil du bracelet), l'acquittement de l'historique (« commit
-  avant ACK ») et la méthode d'effort.
-- **[ryanbr/noop](https://github.com/ryanbr/noop)** (Swift) : la recette de stadification du sommeil
-  (HMM + Viterbi) et le score de récupération (z-scores pondérés, VFC dominante), adaptés ici.
+| Brique | Méthode retenue | Vient de |
+|---|---|---|
+| Connexion WHOOP 5.0, historique (« commit avant ACK »), enregistrements v18 | séquence 0003 → 0007 → 0005 → 0004, HELLO 0x91, contrat d'horloge | **OpenStrap** `edge` / `protocol` |
+| Intervalles R-R en millisecondes sur WHOOP 5 | démontré sur 71 000 trames | **noop** |
+| Détection des nuits | immobilité (gravité) + FC, gardes de jour / matin / hors poignet, raccord des fragments | **noop** `SleepStager`, repris par OpenStrap |
+| Regroupement en une nuit, nuit principale, coupe de la grasse matinée, secondes non observées, siestes | groupes < 60–90 min, mi-sommeil habituel, état du bracelet en confirmation seulement | **OpenStrap** `segmentSleep`, `band_offset`, `nap` |
+| Phases (léger / profond / paradoxal / éveil) | HMM + Viterbi, validé sur 44 personnes avec polysomnographie (κ 0,36) | **noop** `SleepStagerV2` |
+| VFC | séries contiguës de battements propres, moyenne des fenêtres de 5 min | **OpenStrap** `hrv_time` + **noop** `HRVAnalyzer` |
+| FC au repos | plus basse demi-heure de la nuit | **OpenStrap** `nocturnal` |
+| Effort 0–21 | zones sur la réserve cardiaque, échelle logarithmique D = 7201 | **noop** `StrainScorer` |
+| Dette de sommeil | 55 % du manque reporté (ajusté sur 853 nuits WHOOP) | **noop** |
+| Besoin de sommeil, heure de coucher | base + effort + dette − siestes | **OpenStrap** `coaching` |
+| Récupération | z-scores VFC / FC repos / sommeil / respiration + logistique ; ou modèle ajusté sur ton export | **noop** `RecoveryScorer` + calibrage Woop |
 
 Le cœur (protocole + calculs) est en Swift pur et testé avec de vraies trames WHOOP 5.0 capturées
 (CRC vérifiés) : `swift test` à la racine.
@@ -137,8 +184,13 @@ Construire soi-même (Mac) : `brew install xcodegen && xcodegen generate && open
 
 ## Limites honnêtes
 
-- Les mesures sont des **estimations** (méthodes publiées), pas les algorithmes propriétaires de WHOOP :
-  les valeurs seront proches mais pas identiques. Woop **n'est pas un dispositif médical**.
+- Les algorithmes de WHOOP sont privés et tournent sur ses serveurs. Woop utilise des méthodes publiées,
+  calées sur de vrais chiffres WHOOP et, si tu importes ton export, ajustées sur les tiens : les valeurs
+  sont proches, **pas garanties identiques**. Les durées de chaque phase de sommeil restent la partie la
+  moins sûre (aucune montre ne les mesure vraiment ; WHOOP lui-même n'atteint que κ ≈ 0,37 face à la
+  polysomnographie). Woop **n'est pas un dispositif médical**.
+- Ce que le bracelet n'a pas livré ne peut pas être noté : si l'app WHOOP officielle vide l'historique
+  pendant que Woop est fermé, ces heures manquent (carte *Qualité des données*).
 - L'oxygène sanguin est une estimation non calibrée issue du bracelet.
 - iOS limite l'exécution en arrière-plan : la synchronisation est la plus fiable quand l'app est ouverte.
 - Application indépendante, **non affiliée à WHOOP, Inc.** Usage personnel, non commercial.

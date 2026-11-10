@@ -94,6 +94,8 @@ final class StrapManager: NSObject, ObservableObject {
     @Published private(set) var emptySyncs = 0
     /// Seconds of history received by the last completed transfer.
     @Published private(set) var lastSyncSeconds: Int?
+    /// Transfers in a row that the strap never answered (connected, but no history sent).
+    @Published private(set) var stalledSyncs = 0
 
     // Fast-changing values live in their own small observable objects, so a 1 Hz heart rate or
     // a sync progress counter only redraws the few views that display them (not every screen
@@ -151,6 +153,9 @@ final class StrapManager: NSObject, ObservableObject {
     private var drainWaiters: [(Bool) -> Void] = []
     private var drainStarting = false
     private var drainStartTotal = 0
+    private var drainGotTraffic = false
+    private var drainFailures = 0
+    private var lastDrainAttempt = Date.distantPast
 
     private struct Waiter {
         let id: Int
@@ -424,6 +429,7 @@ final class StrapManager: NSObject, ObservableObject {
         if drain.ownDrainActive { drain.endOwnDrain() }
         drain = HistoryDrain(profile: bandProfile)
         drainStarting = false
+        drainStartTotal = 0
         failDrainWaiters()
         publish { $0.syncing = false; $0.live.set(nil) }
     }
@@ -619,6 +625,8 @@ final class StrapManager: NSObject, ObservableObject {
 
     private func markDrainStarted() {
         drainStartedAt = Date()
+        lastDrainAttempt = Date()
+        drainGotTraffic = false
         drainStartTotal = drain.totalSamples
         lastHistoryTraffic = Date()
         publish { $0.syncing = true; $0.progress.seconds = 0 }
@@ -659,7 +667,11 @@ final class StrapManager: NSObject, ObservableObject {
     }
 
     private func maybeAutoSync(minInterval: TimeInterval) {
-        guard bootstrapped, !drain.ownDrainActive else { return }
+        guard bootstrapped, !drain.ownDrainActive, !drainStarting else { return }
+        // A transfer that failed or stalled is retried with a growing pause (1, 2, 4 … 15 min)
+        // instead of every few seconds: a strap that withholds its history must not be hammered.
+        let backoff = drainFailures == 0 ? 0 : min(900, 60 * pow(2, Double(min(drainFailures - 1, 4))))
+        guard Date().timeIntervalSince(lastDrainAttempt) >= backoff else { return }
         let last = lastSyncDateOnQueue ?? .distantPast
         if Date().timeIntervalSince(last) >= minInterval { startDrain(reason: "auto") }
     }
@@ -668,6 +680,7 @@ final class StrapManager: NSObject, ObservableObject {
 
     private func handleMarker(_ m: HistoryMarker) {
         lastHistoryTraffic = Date()
+        if drain.ownDrainActive { drainGotTraffic = true }
         switch drain.onMarker(m) {
         case .none:
             break
@@ -696,6 +709,7 @@ final class StrapManager: NSObject, ObservableObject {
             logLine("Trop d'échecs de transfert — synchronisation interrompue")
             send(WhoopCommands.abortHistorical(seq: seq.nextLive(), profile: bandProfile))
             drain.endOwnDrain()
+            drainFailures += 1
             failDrainWaiters()
             publish { $0.syncing = false }
         case .complete:
@@ -703,12 +717,14 @@ final class StrapManager: NSObject, ObservableObject {
             logLine("Historique synchronisé (\(n) secondes de données)")
             let now = Date()
             lastSyncDateOnQueue = now
+            drainFailures = 0
             UserDefaults.standard.set(now, forKey: Keys.lastSync)
             publish {
                 $0.syncing = false
                 $0.lastSync = now
                 $0.lastSyncSeconds = n
                 $0.emptySyncs = n == 0 ? $0.emptySyncs + 1 : 0
+                $0.stalledSyncs = 0
             }
             onDrainComplete?()
             let waiters = drainWaiters
@@ -765,7 +781,7 @@ final class StrapManager: NSObject, ObservableObject {
             }
         case PacketType.historicalData:
             lastHistoryTraffic = Date()
-            if !drain.ownDrainActive { lastForeignTraffic = Date() }
+            if drain.ownDrainActive { drainGotTraffic = true } else { lastForeignTraffic = Date() }
             drain.onHistoricalPacket(frame)
         case PacketType.metadata:
             if let m = HistoryMarker.parse(frame.inner) { handleMarker(m) }
@@ -840,11 +856,17 @@ final class StrapManager: NSObject, ObservableObject {
         if drain.ownDrainActive {
             // Idle watchdog: a drain that went silent is abandoned (the strap keeps its checkpoint).
             if now.timeIntervalSince(lastHistoryTraffic) > 60 {
-                logLine("Synchronisation inactive — interrompue, reprise plus tard")
+                let silent = !drainGotTraffic
+                logLine(silent ? "Le bracelet n'a rien envoyé en réponse à la demande d'historique — nouvel essai plus tard"
+                               : "Synchronisation inactive — interrompue, reprise plus tard")
                 send(WhoopCommands.abortHistorical(seq: seq.nextLive(), profile: bandProfile))
                 drain.endOwnDrain()
+                drainFailures += 1
                 failDrainWaiters()
-                publish { $0.syncing = false }
+                publish {
+                    $0.syncing = false
+                    if silent { $0.stalledSyncs += 1 }
+                }
             }
             return
         }
@@ -854,7 +876,8 @@ final class StrapManager: NSObject, ObservableObject {
             send(WhoopCommands.linkValid(seq: seq.nextLive(), profile: bandProfile))
         }
         pollBattery(force: false)
-        maybeAutoSync(minInterval: 15 * 60)
+        // With the app open the newest minutes are fetched every 5 minutes; every 15 otherwise.
+        maybeAutoSync(minInterval: foreground ? 5 * 60 : 15 * 60)
     }
 
     private func pollBattery(force: Bool) {

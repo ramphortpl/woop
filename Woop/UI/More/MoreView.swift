@@ -294,15 +294,15 @@ struct AboutView: View {
                     .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
             }
             CardBox(title: "Sources") {
-                Text("NOOP (ryanbr/noop) — Licence PolyForm Noncommercial 1.0.0. Required Notice: Copyright 2026 NoopApp. Recette de stadification du sommeil et score de récupération adaptés, pour un usage personnel non commercial.")
+                Text("NOOP (ryanbr/noop) — Licence PolyForm Noncommercial 1.0.0. Required Notice: Copyright 2026 NoopApp. Détection et stadification du sommeil, VFC sans faux écarts, échelle d'effort, dette de sommeil et score de récupération adaptés, pour un usage personnel non commercial.")
                     .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
-                Text("OpenStrap edge / protocol / analytics — documentation du protocole WHOOP 5.0 (séquence d'appairage, enregistrements v18, acquittement de l'historique) et méthodes publiées utilisées pour l'effort et le coaching du sommeil.")
+                Text("OpenStrap edge / protocol / analytics — documentation du protocole WHOOP 5.0 (séquence d'appairage, enregistrements v18, acquittement de l'historique) et méthodes utilisées pour le regroupement des nuits, les siestes, la VFC par fenêtres, la FC au repos et le coaching du sommeil.")
                     .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
                 Text("Polices Barlow Semi Condensed, Montserrat et Figtree — SIL Open Font License 1.1.")
                     .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
             }
             CardBox(title: "Méthodes publiées") {
-                Text("RMSSD (Task Force 1996), filtre de Malik, TRIMP de Banister (1991), réserve cardiaque de Karvonen, FC max de Tanaka (2001), dépense de Keytel (2005), métabolisme de Mifflin–St Jeor, VO₂max d'Uth (2004), arythmie sinusale respiratoire.")
+                Text("RMSSD (Task Force 1996), filtre de Malik, fenêtres ultra-courtes (Munoz 2015, Baek 2015), zones d'Edwards sur la réserve cardiaque de Karvonen, immobilité de van Hees, indice de régularité du sommeil (Phillips 2017), FC max de Tanaka (2001), dépense de Keytel (2005), métabolisme de Mifflin–St Jeor, VO₂max d'Uth (2004), arythmie sinusale respiratoire.")
                     .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
             }
             CardBox {

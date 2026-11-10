@@ -4,23 +4,41 @@ Woop est une application indépendante destinée à un **usage personnel et non 
 Elle n'est ni affiliée à WHOOP, Inc., ni approuvée par elle ; « WHOOP » désigne uniquement le
 matériel compatible.
 
-## Code adapté de NOOP (PolyForm Noncommercial 1.0.0)
+## Méthodes adaptées de NOOP (PolyForm Noncommercial 1.0.0)
 
 Certaines parties de ce logiciel sont adaptées de **NOOP** (https://github.com/ryanbr/noop) :
-la recette de stadification du sommeil (`Woop/Core/Analytics/SleepStager.swift`) et la structure du
-score de récupération (`Woop/Core/Analytics/Recovery.swift`). Ces parties restent soumises à la
-licence PolyForm Noncommercial 1.0.0, reproduite ci-dessous.
+
+- la recette de stadification du sommeil (`Woop/Core/Analytics/SleepStager.swift`) ;
+- la détection des nuits par immobilité et fréquence cardiaque, avec ses gardes
+  (`Woop/Core/Analytics/SleepDetector.swift`) ;
+- l'échelle d'effort par zones (`Woop/Core/Analytics/Strain.swift`), la récurrence de la dette de
+  sommeil et la structure du score de récupération (`Woop/Core/Analytics/Recovery.swift`).
+
+Ces parties restent soumises à la licence PolyForm Noncommercial 1.0.0, reproduite ci-dessous :
+usage personnel et non commercial uniquement.
 
 Required Notice: Copyright 2026 NoopApp
 
-## OpenStrap (edge / protocol / analytics)
+## OpenStrap (edge / protocol / analytics — AGPL-3.0)
 
 Le protocole Bluetooth WHOOP 5.0 (UUID GATT, format des trames, CRC, opcodes, ordre de connexion,
 disposition des enregistrements v18, jeton d'acquittement de l'historique) est implémenté à partir de
-la documentation du projet **OpenStrap** (https://github.com/OpenStrap). Ce sont des faits techniques
-sur des octets transmis par un appareil que l'utilisateur possède ; le code de Woop est une
-réimplémentation indépendante en Swift. Les méthodes de calcul utilisées (TRIMP de Banister,
-Keytel, Mifflin–St Jeor, Uth, RMSSD…) sont des méthodes scientifiques publiées.
+la documentation du projet **OpenStrap** (https://github.com/OpenStrap, Copyright (c) 2026 OpenStrap).
+Ce sont des faits techniques sur des octets transmis par un appareil que l'utilisateur possède.
+
+Plusieurs méthodes de calcul suivent celles de la bibliothèque `analytics` d'OpenStrap, réécrites en
+Swift : regroupement des fragments en une nuit et choix de la nuit principale, coupe de fin de nuit
+d'après l'état du bracelet, secondes non observées, détection des siestes
+(`Woop/Core/Analytics/SleepDetector.swift`, `DayEngine.swift`), VFC par séries contiguës et fenêtres
+de 5 minutes, contrôle de couverture des intervalles R-R, fréquence cardiaque au repos
+(`Woop/Core/Analytics/HRV.swift`), besoin de sommeil et heure de coucher
+(`Woop/Core/Analytics/Recovery.swift`). Les versions récentes d'OpenStrap sont publiées sous
+**GNU Affero General Public License v3** (https://www.gnu.org/licenses/agpl-3.0.html) : le code
+source complet de Woop est public dans ce dépôt, et toute redistribution d'une version modifiée doit
+rester accompagnée de son code source.
+
+Les méthodes scientifiques elles-mêmes (zones d'Edwards, Keytel, Mifflin–St Jeor, Uth, RMSSD,
+van Hees, indice de régularité du sommeil…) sont des méthodes publiées.
 Les tests utilisent quelques trames réelles publiées dans la suite de tests d'OpenStrap `protocol`.
 
 ## Police

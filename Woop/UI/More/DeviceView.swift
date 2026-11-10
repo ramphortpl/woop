@@ -203,11 +203,13 @@ struct FirmwareNotice: View {
     @EnvironmentObject var strap: StrapManager
 
     private var blockedNow: Bool {
-        strap.state.isConnected && strap.emptySyncs >= 2 && (staleHours ?? 0) >= 3
+        guard strap.state.isConnected, strap.emptySyncs >= 2 || strap.stalledSyncs >= 2 else { return false }
+        return staleHours >= 3
     }
 
-    private var staleHours: Double? {
-        guard let newest = Database.shared.newestHistoryTs() else { return strap.emptySyncs >= 2 ? 99 : nil }
+    /// Hours since the newest second received from the strap's history.
+    private var staleHours: Double {
+        guard let newest = Database.shared.newestHistoryTs() else { return 99 }
         return (Date().timeIntervalSince1970 - Double(newest)) / 3600
     }
 

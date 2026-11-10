@@ -403,10 +403,11 @@ struct RecoveryDetailView: View {
             if let n = d.calibrationNights { return "Calibrage en cours (\(n)/\(Recovery.calibrationNights) nuits). Continue de porter ton bracelet la nuit." }
             return "Pas encore de récupération pour ce jour."
         }
+        let tail = d.recoveryCalibrated == true ? " Score calculé avec ton calibrage WHOOP." : ""
         switch Recovery.zone(r) {
-        case .green: return "Ton corps est prêt à encaisser un effort important aujourd'hui."
-        case .yellow: return "Ton corps se maintient : un effort modéré est adapté."
-        case .red: return "Ton corps a besoin de repos : privilégie la récupération."
+        case .green: return "Ton corps est prêt à encaisser un effort important aujourd'hui." + tail
+        case .yellow: return "Ton corps se maintient : un effort modéré est adapté." + tail
+        case .red: return "Ton corps a besoin de repos : privilégie la récupération." + tail
         }
     }
 }

@@ -29,6 +29,8 @@ final class LiveWorkout: NSObject, ObservableObject {
     private var maxHRUsed = 190.0
     private var profile = UserProfile()
     private var dayNetAtStart = 0.0
+    private var denominator = Strain.defaultDenominator
+    private var kcalScale = 1.0
     private var lastBeat: Date?
     private var hrSum = 0.0
     private var hrWeight = 0.0
