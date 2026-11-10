@@ -382,4 +382,58 @@ final class SleepScenarioTests: XCTestCase {
         XCTAssertTrue(d.naps.isEmpty)
         XCTAssertNotNil(d.sleep!.hrv)
     }
+    /// The night's edges sit on the real start and end of the stillness, not ~3 min inside it.
+    func testEdgesAreNotRoundedOff() {
+        let date = "2026-10-05"
+        let day0 = DayKey.startUnix(date)!
+        let rec = Self.record(day0: day0, [
+            Block(from: -10, to: -0.5, kind: .active),
+            Block(from: -0.5, to: 7.0, kind: .sleep),
+            Block(from: 7.0, to: 23, kind: .active),
+        ])
+        let d = compute(date, rec)
+        XCTAssertEqual(d.sleep!.start, day0 - 1800, accuracy: 60)
+        XCTAssertEqual(d.sleep!.end, day0 + 7 * 3600, accuracy: 60)
+    }
+
+    func testWristOffEventsArePaired() {
+        let ev = [StoredEvent(ts: 100, id: EventID.wristOff, body: []), StoredEvent(ts: 400, id: EventID.wristOn, body: []),
+                  StoredEvent(ts: 900, id: EventID.wristOn, body: []), StoredEvent(ts: 1000, id: EventID.wristOff, body: []),
+                  StoredEvent(ts: 1100, id: EventID.wristOff, body: [])]
+        let spans = SleepSpine.offWristIntervals(ev, windowEnd: 2000)
+        XCTAssertEqual(spans.count, 2)
+        XCTAssertEqual(spans[0].start, 100); XCTAssertEqual(spans[0].end, 400)
+        XCTAssertEqual(spans[1].start, 1000); XCTAssertEqual(spans[1].end, 2000)
+    }
+
+    /// The strap said "off the wrist" for most of a still stretch: not a night, whatever the
+    /// (stale) heart-rate readings say.
+    func testWristOffEventsDropTheRun() {
+        let date = "2026-10-05"
+        let day0 = DayKey.startUnix(date)!
+        let rec = Self.record(day0: day0, [
+            Block(from: -10, to: -0.5, kind: .active),
+            Block(from: -0.5, to: 7.0, kind: .sleep),
+            Block(from: 7.0, to: 23, kind: .active),
+        ])
+        let off = [StoredEvent(ts: day0 - 1800, id: EventID.wristOff, body: []),
+                   StoredEvent(ts: day0 + 6 * 3600, id: EventID.wristOn, body: [])]
+        let d = compute(date, rec, events: off)
+        XCTAssertNil(d.sleep)
+    }
+
+    func testStrapEnvelopeTrimNeedsACleanTail() {
+        // 4 h of "asleep", then 20 min of "wake": trimmed. With re-settling ("still") in the tail: kept.
+        func samples(tail: Int8) -> [HistorySample] {
+            (0..<(4 * 3600 + 1200)).map { i in
+                var s = HistorySample(ts: 1_800_000_000 + i, hr: 55)
+                s.sleepState = i < 4 * 3600 ? 2 : tail
+                return s
+            }
+        }
+        let a = samples(tail: 0)
+        XCTAssertEqual(SleepSpine.bandTrimmedEnd(start: a[0].ts, end: a.last!.ts + 1, samples: a[...]), a[0].ts + 4 * 3600)
+        let b = samples(tail: 1)
+        XCTAssertNil(SleepSpine.bandTrimmedEnd(start: b[0].ts, end: b.last!.ts + 1, samples: b[...]))
+    }
 }
