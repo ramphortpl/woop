@@ -21,7 +21,7 @@ L'IPA n'est pas signée : ouvre le lien depuis ton iPhone ou colle-le dans ton s
 ## Nouveautés de la 1.2.1 — un réveil dans la nuit ne coupe plus ton sommeil
 
 Quand tu te réveilles la nuit puis que tu te rendors, c'est **la même nuit** : le rendormissement
-n'est plus jamais rangé en « sieste », et le temps éveillé compte comme éveil dans la nuit.
+n'est plus rangé en « sieste », et le temps éveillé compte comme éveil dans la nuit.
 
 - **Réveil long** — jusqu'à 3 h (5 h pour une insomnie en pleine nuit), les deux parties de la nuit
   sont réunies. Les deux projets de référence s'arrêtent à 90 min : au-delà, la partie la plus
