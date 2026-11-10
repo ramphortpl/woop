@@ -346,4 +346,40 @@ final class SleepScenarioTests: XCTestCase {
         XCTAssertEqual(Double(full.sleep!.end - day0) / 3600, 7.0, accuracy: 0.25)
         if let p = partial.sleep { XCTAssertLessThanOrEqual(p.end, day0 + 3 * 3600 + 1) }
     }
+    /// A strap whose envelope never leaves "wake" (some firmware): the night is still found.
+    func testDeadStrapEnvelopeDoesNotHideTheNight() {
+        let date = "2026-10-05"
+        let day0 = DayKey.startUnix(date)!
+        let rec = Self.record(day0: day0, [
+            Block(from: -10, to: -0.5, kind: .active, band: 0),
+            Block(from: -0.5, to: 7.0, kind: .sleep, band: 0),
+            Block(from: 7.0, to: 14, kind: .active, band: 0),
+            Block(from: 14, to: 14.75, kind: .sleep, band: 0),
+            Block(from: 14.75, to: 23, kind: .active, band: 0),
+        ])
+        let d = compute(date, rec)
+        describe("dead-band", d, day0)
+        XCTAssertEqual(Double(d.sleep!.start - day0) / 3600, -0.5, accuracy: 0.25)
+        XCTAssertEqual(Double(d.sleep!.end - day0) / 3600, 7.0, accuracy: 0.25)
+        XCTAssertEqual(d.naps.count, 1)
+    }
+
+    /// The wearer's own times replace the detected night.
+    func testManualSleepTimes() {
+        let date = "2026-10-05"
+        let day0 = DayKey.startUnix(date)!
+        let rec = Self.record(day0: day0, [
+            Block(from: -10, to: -0.5, kind: .active),
+            Block(from: -0.5, to: 7.0, kind: .sleep),
+            Block(from: 7.0, to: 23, kind: .active),
+        ])
+        var inputs = DayInputs(date: date, samples: rec, profile: UserProfile(), history: [], now: day0 + 36 * 3600)
+        inputs.forcedSleep = (day0 + 3600, day0 + 6 * 3600)
+        let d = DayEngine.compute(inputs)
+        describe("manual", d, day0)
+        XCTAssertEqual(d.sleep!.start, day0 + 3600)
+        XCTAssertEqual(d.sleep!.end, day0 + 6 * 3600)
+        XCTAssertTrue(d.naps.isEmpty)
+        XCTAssertNotNil(d.sleep!.hrv)
+    }
 }

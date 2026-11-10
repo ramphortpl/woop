@@ -90,6 +90,10 @@ enum SleepSpine {
     static let evidenceHRRatioNoBand = 1.20
     static let evidenceHRRatioNoBandLong = 1.30
     static let evidenceLongRunS = 3 * 3600
+    /// The strap's envelope only counts as a witness when it is alive: it must have reported
+    /// "asleep" for at least this long somewhere in the window. A strap (or firmware) that never
+    /// leaves "wake" says nothing about any particular stretch.
+    static let bandAliveSleepSec = 30 * 60
     // Heart-rate-only spine.
     static let hrOnlyAnchorPercentile = 0.10
     static let hrOnlyBandMult = 1.05
@@ -251,6 +255,7 @@ enum SleepSpine {
         var out = Output()
         out.hrBaseline = hr.median
         var runs: [SleepRun] = []
+        if !bandIsAlive(bandState) { bandTs = []; bandState = [] }
 
         if gTs.count >= 2 {
             let sparse = isGravitySparse(gTs: gTs, hr: hr)
@@ -276,6 +281,16 @@ enum SleepSpine {
         }
         out.runs = runs.sorted { $0.start < $1.start }
         return out
+    }
+
+    /// True when the strap's envelope reported "asleep" for at least `bandAliveSleepSec`.
+    static func bandIsAlive(_ states: [Int8]) -> Bool {
+        var n = 0
+        for v in states where v == bandSleep {
+            n += 1
+            if n >= bandAliveSleepSec { return true }
+        }
+        return false
     }
 
     // MARK: - Stillness spine
@@ -853,6 +868,7 @@ enum NapDetector {
             if s.hr > 0 { hr.ts.append(s.ts); hr.bpm.append(s.hr) }
             if s.sleepState >= 0 { bandTs.append(s.ts); bandState.append(s.sleepState) }
         }
+        if !SleepSpine.bandIsAlive(bandState) { bandTs = []; bandState = [] }
         let n = ts.count
         guard n >= minNapSec else { return [] }
         // 5-sample rolling median of the arm angle, then its change over 5 samples.
