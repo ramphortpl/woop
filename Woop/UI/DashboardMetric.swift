@@ -189,7 +189,7 @@ extension DashboardMetric {
     /// Text of the (i) button.
     var explanation: String {
         switch self {
-        case .hrv: return "Variabilité de la fréquence cardiaque (RMSSD) : moyenne des fenêtres de 5 minutes de ta nuit, calculée uniquement entre battements réellement consécutifs. Plus elle est haute par rapport à ta norme, mieux ton système nerveux récupère."
+        case .hrv: return "Variabilité de la fréquence cardiaque (RMSSD) : valeur médiane des fenêtres de 5 minutes de ta nuit, calculée uniquement entre battements réellement consécutifs. Plus elle est haute par rapport à ta norme, mieux ton système nerveux récupère."
         case .rhr: return "Fréquence cardiaque au repos : la demi-heure la plus basse de ta nuit. Une valeur plus haute que d'habitude signale souvent fatigue, stress, alcool ou début de maladie."
         case .vo2max: return "Estimation à partir du rapport FC max / FC au repos (méthode d'Uth et al., 2004). Ce n'est pas une mesure de laboratoire."
         case .steps: return "Pas comptés par le capteur de mouvement du bracelet pendant la journée."

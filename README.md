@@ -33,8 +33,8 @@ calée sur de vrais chiffres WHOOP.
   efficacité et stress pendant le sommeil (une vraie nuit WHOOP à 70 % / 54 % / 97 % / 0 % donne
   bien 76 %). Dette de sommeil : 55 % du manque reporté sur la nuit suivante.
 - **VFC** — les battements manquants ne créent plus de faux écarts (c'est ce qui gonflait la VFC de
-  50 à 100 % sur WHOOP 5.0 / MG) ; moyenne des fenêtres de 5 minutes de la nuit, comme les deux
-  projets de référence. **FC au repos** : plus basse demi-heure de la nuit.
+  50 à 100 % sur WHOOP 5.0 / MG) ; médiane des fenêtres de 5 minutes de la nuit, moins sensible
+  aux fenêtres parasitées. **FC au repos** : plus basse demi-heure de la nuit.
 - **Effort** — nouvelle échelle logarithmique, vérifiée sur une vraie journée WHOOP (vélo 12,6 +
   randonnée 4,1 → journée 12,8) : une journée ne grimpe presque plus après une grosse séance, et une
   journée calme tourne autour de 5–7. **Zones de FC** sur la réserve cardiaque, comme WHOOP.
@@ -162,7 +162,7 @@ Woop combine les deux projets demandés, en prenant pour chaque brique la métho
 | Détection des nuits | immobilité (gravité) + FC, gardes de jour / matin / hors poignet, raccord des fragments | **noop** `SleepStager`, repris par OpenStrap |
 | Regroupement en une nuit, nuit principale, coupe de la grasse matinée, secondes non observées, siestes | groupes < 60–90 min, mi-sommeil habituel, état du bracelet en confirmation seulement | **OpenStrap** `segmentSleep`, `band_offset`, `nap` |
 | Phases (léger / profond / paradoxal / éveil) | HMM + Viterbi, validé sur 44 personnes avec polysomnographie (κ 0,36) | **noop** `SleepStagerV2` |
-| VFC | séries contiguës de battements propres, moyenne des fenêtres de 5 min | **OpenStrap** `hrv_time` + **noop** `HRVAnalyzer` |
+| VFC | séries contiguës de battements propres, médiane des fenêtres de 5 min | **OpenStrap** `hrv_time` + **noop** `HRVAnalyzer` |
 | FC au repos | plus basse demi-heure de la nuit | **OpenStrap** `nocturnal` |
 | Effort 0–21 | zones sur la réserve cardiaque, échelle logarithmique D = 7201 | **noop** `StrainScorer` |
 | Dette de sommeil | 55 % du manque reporté (ajusté sur 853 nuits WHOOP) | **noop** |

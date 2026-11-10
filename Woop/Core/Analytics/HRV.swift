@@ -169,7 +169,7 @@ enum HRV {
     }
 
     struct SessionHRV: Equatable {
-        /// Mean RMSSD over the valid 5-minute windows, ms.
+        /// Median RMSSD of the valid 5-minute windows, ms.
         var rmssd: Double
         var windows: Int
         var thinWindows = 0
@@ -180,11 +180,14 @@ enum HRV {
         var pooled = false
     }
 
-    /// Nightly HRV: the arithmetic mean of the RMSSD of consecutive 5-minute windows across the
-    /// night's in-bed spans. A window counts only with ≥ 20 clean successive differences
+    /// Nightly HRV: the RMSSD of consecutive 5-minute windows across the night's in-bed spans,
+    /// summarised by their MEDIAN. A window counts only with ≥ 20 clean successive differences
     /// (ultra-short RMSSD floor, Munoz 2015 / Baek 2015) and no more beat-time than wall time.
-    /// This is the headline both reference projects publish (NOOP `sessionAvgHRV`, OpenStrap
-    /// `sleepSessionWindowedRmssd`); NOOP measured it within ~5 ms of WHOOP's own nightly value.
+    ///
+    /// Both reference projects window the night this way (NOOP `sessionAvgHRV`, OpenStrap
+    /// `sleepSessionWindowedRmssd` / `nocturnalRmssd`). The median is OpenStrap's robust
+    /// variant: on real nights NOOP found the whole-night MEAN reads above WHOOP's own value —
+    /// a few windows inflated by residual artefacts pull a mean up, not a median.
     static func sessionRMSSD(_ beats: [Beat], spans: [(start: Int, end: Int)], window: Int = 300,
                              minDiffs: Int = minDiffsPerWindow) -> SessionHRV? {
         var rmssds: [Double] = []
@@ -224,7 +227,7 @@ enum HRV {
         if let c = cov, c > coverageCeiling { return nil }
         let acf1 = diffAcf1(pooledRuns)
         if !rmssds.isEmpty {
-            return SessionHRV(rmssd: rmssds.reduce(0, +) / Double(rmssds.count), windows: rmssds.count,
+            return SessionHRV(rmssd: median(&rmssds), windows: rmssds.count,
                               thinWindows: thin, overCountedWindows: over, acf1: acf1, coverage: cov)
         }
         // Sparse beat stream: no window reaches the floor on its own; pool the whole night.
