@@ -26,15 +26,18 @@ calée sur de vrais chiffres WHOOP.
 - **Sommeil** — nouvelle détection : immobilité du poignet confirmée par la fréquence cardiaque,
   l'état « endormi » du bracelet ne servant plus qu'à confirmer et à couper une grasse matinée.
   Une nuit n'est **plus coupée en deux** par un réveil de 20–30 min (défaut de la 1.1), les trous
-  d'enregistrement ne comptent ni comme sommeil ni comme éveil, une soirée immobile devant un film
-  ou un matin au bureau ne sont plus pris pour du sommeil, les siestes ont leur propre détection.
+  d'enregistrement ne comptent ni comme sommeil ni comme éveil, un garde-fou écarte l'immobilité
+  éveillée (film du soir, bureau le matin : cœur au-dessus du niveau de sommeil), les bords de la
+  nuit sont calés à la minute près et les siestes ont leur propre détection.
   Bouton **Corriger les heures de sommeil** si la détection se trompe (comme « Modifier » sur WHOOP).
 - **Score de sommeil** comme WHOOP aujourd'hui : heures par rapport aux besoins, régularité,
   efficacité et stress pendant le sommeil (une vraie nuit WHOOP à 70 % / 54 % / 97 % / 0 % donne
   bien 76 %). Dette de sommeil : 55 % du manque reporté sur la nuit suivante.
-- **VFC** — les battements manquants ne créent plus de faux écarts (c'est ce qui gonflait la VFC de
-  50 à 100 % sur WHOOP 5.0 / MG) ; médiane des fenêtres de 5 minutes de la nuit, moins sensible
-  aux fenêtres parasitées. **FC au repos** : plus basse demi-heure de la nuit.
+- **VFC** — la 1.1 ne gardait que le sommeil profond de fin de nuit ; or les comparaisons de noop
+  avec de vraies nuits WHOOP montrent que cette fenêtre lit trop haut. La 1.2 prend la médiane des
+  fenêtres de 5 minutes de toute la nuit, avec un nettoyage plus strict : aucun écart n'est calculé
+  à travers un battement manquant ou rejeté (ce défaut gonfle la VFC de 50 à 100 % sur WHOOP 5.0 /
+  MG d'après les mesures d'OpenStrap). **FC au repos** : plus basse demi-heure de la nuit.
 - **Effort** — nouvelle échelle logarithmique, vérifiée sur une vraie journée WHOOP (vélo 12,6 +
   randonnée 4,1 → journée 12,8) : une journée ne grimpe presque plus après une grosse séance, et une
   journée calme tourne autour de 5–7. **Zones de FC** sur la réserve cardiaque, comme WHOOP.
