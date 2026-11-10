@@ -46,14 +46,46 @@ enum DayEngine {
         // ── Sleep detection ───────────────────────────────────────────────────────────
         let wristOff = SleepSpine.offWristIntervals(inp.events, windowEnd: to)
         let detected = SleepSpine.detect(window, tz: tz, wristOff: wristOff)
-        var groups = SleepSpine.groupNights(detected.runs, tz: tz)
+        let pastNights = history.suffix(60).compactMap { d in d.sleep.map { (start: $0.start, end: $0.end) } }
+        // The wearer's usual night decides how long an awakening may last before the next sleep
+        // is a new one; the steps walked and the effort made in between tell a night awakening
+        // from a day that has started.
+        let restGuess = Stats.median(history.suffix(14).compactMap(\.rhr)) ?? 60
+        var maxGuess = profile.tanakaMaxHR
+        if let o = profile.maxHROverride, o > 100 { maxGuess = Double(o) }
+        let exerciseHR = restGuess + 0.5 * max(40, maxGuess - restGuess)
+        let context = SleepSpine.NightContext(habit: NightHabit.learn(pastNights, tz: tz), tz: tz, activity: { a, b in
+            let i = max(0, series.index(of: a)), j = min(series.count, series.index(of: b) + 1)
+            guard j > i else { return .unknown }
+            var steps = 0, observed = 0, counted = 0, hard = 0
+            for k in i..<j {
+                steps += series.stepInc[k]
+                if series.present[k] >= 20 { observed += 1 }
+                if series.stepN[k] >= 20 { counted += 1 }
+                if let h = series.hr(k), h >= exerciseHR { hard += 1 }
+            }
+            // The steps are known only when the counter was there for most of the awakening
+            // (the live stream carries none).
+            let known = counted > 0 && counted * 2 >= observed
+            return SleepSpine.gapActivity(steps: known ? steps : nil, exerciseMinutes: hard)
+        })
+        // Short sleeps the spine does not keep on its own (under an hour): each one either
+        // continues a night (a return to sleep) or stands alone (a nap).
+        let bouts = NapDetector.detect(window, taken: detected.runs.map { ($0.start, $0.end) }, wristOff: wristOff)
+            .map { SleepRun(start: $0.start, end: $0.end, bout: true) }
+        var groups = SleepSpine.assembleNights(runs: detected.runs, bouts: bouts, context) { bout, leading in
+            SleepSpine.boutIsSleep(bout, leading: leading, hr: detected.hr, bandTs: detected.bandTs,
+                                   bandState: detected.bandState)
+        }
         var stagedRuns: [Int: [StageSegment]] = [:]
         for gi in groups.indices {
+            let runs = groups[gi].runs
+            let staged = SleepStager.stageNight(samples: samples, runs: runs.map { ($0.start, $0.end) },
+                                                priors: cal?.stageShares)
             var asleep = 0
-            for r in groups[gi].runs {
-                let st = SleepStager.stage(samples: samples, start: r.start, end: r.end, priors: cal?.stageShares)
-                stagedRuns[r.start] = st
-                asleep += st.reduce(0) { $0 + ($1.stage == .wake ? 0 : $1.duration) }
+            for (k, r) in runs.enumerated() {
+                stagedRuns[r.start] = staged[k]
+                asleep += staged[k].reduce(0) { $0 + ($1.stage == .wake ? 0 : $1.duration) }
             }
             groups[gi].asleepMin = Double(asleep) / 60
         }
@@ -62,7 +94,6 @@ enum DayEngine {
         func canBeMain(_ g: NightGroup) -> Bool {
             g.asleepMin >= 120 || (g.asleepMin >= 60 && SleepSpine.isOvernightOnset(g.start, tz: tz))
         }
-        let pastNights = history.suffix(60).compactMap { d in d.sleep.map { (start: $0.start, end: $0.end) } }
         let habitual = SleepSpine.habitualMidsleep(pastNights, tz: tz)
         let mainCandidates = todays.filter { canBeMain(groups[$0]) }
         var mainIdx = SleepSpine.pickMain(mainCandidates.map { groups[$0] }, habitualMidsleepSec: habitual, tz: tz)
@@ -118,20 +149,13 @@ enum DayEngine {
         let mainStart = sleep?.start ?? dayStart
         let mainEnd = sleep?.end
 
-        // Naps: the other sleeps ending today, plus short still + low-heart-rate bouts.
+        // Naps: the other sleeps ending today. A return to sleep during the night is not one —
+        // it was attached to its night above.
         var naps: [SleepSession] = []
         for gi in todayIdx where gi != mainIdx {
             let g = groups[gi]
             guard g.asleepMin >= 15, g.end - g.start <= 6 * 3600 else { continue }
             naps.append(buildSession(g, staged: stagedRuns, window: window, series: series, nap: true))
-        }
-        let taken: [(start: Int, end: Int)] = groups.map { ($0.start, $0.end) }
-        for n in NapDetector.detect(window, taken: taken, mainEnd: mainEnd, wristOff: wristOff)
-        where n.end > max(dayStart, mainEnd ?? dayStart) && n.end <= nextStart {
-            let g = NightGroup(runs: [SleepRun(start: n.start, end: n.end)])
-            let st = SleepStager.stage(samples: samples, start: n.start, end: n.end, priors: cal?.stageShares)
-            let session = buildSession(g, staged: [n.start: st], window: window, series: series, nap: true)
-            if session.asleepSec >= 15 * 60 { naps.append(session) }
         }
         naps.sort { $0.start < $1.start }
         out.sleep = sleep
@@ -187,9 +211,28 @@ enum DayEngine {
         out.cycleStart = cycleStart
         out.cycleEnd = cycleEnd
 
-        // Seconds asleep (main night or naps) inside the cycle.
-        let sleepWindows: [(Int, Int)] = ([sleep] + naps.map { Optional($0) }).compactMap { $0 }.map { ($0.start, $0.end) }
-        func isAsleep(_ unix: Int) -> Bool { sleepWindows.contains { unix >= $0.0 && unix < $0.1 } }
+        // Seconds asleep (main night or naps) inside the cycle — the stages, not the windows: an
+        // hour awake in the middle of the night is waking time for the effort and the calories
+        // (an arousal under five minutes is not).
+        var asleepSpans: [(start: Int, end: Int)] = []
+        for session in [sleep].compactMap({ $0 }) + naps {
+            for seg in session.stages where seg.stage != .wake {
+                if let last = asleepSpans.last, seg.start >= last.end, seg.start - last.end < 300 {
+                    asleepSpans[asleepSpans.count - 1].end = seg.end
+                } else {
+                    asleepSpans.append((seg.start, seg.end))
+                }
+            }
+        }
+        asleepSpans.sort { $0.start < $1.start }
+        func isAsleep(_ unix: Int) -> Bool {
+            var lo = 0, hi = asleepSpans.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if asleepSpans[mid].end <= unix { lo = mid + 1 } else { hi = mid }
+            }
+            return lo < asleepSpans.count && asleepSpans[lo].start <= unix
+        }
 
         // ── Anchors: resting HR, max HR ───────────────────────────────────────────────
         let recentRHR = history.suffix(14).compactMap(\.rhr) + [sleep?.rhr].compactMap { $0 }

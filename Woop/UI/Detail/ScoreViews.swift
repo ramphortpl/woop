@@ -43,10 +43,23 @@ struct SleepDetailView: View {
                 if !d.naps.isEmpty {
                     CardBox(title: "Siestes") {
                         ForEach(d.naps) { n in
-                            HStack {
-                                Text("\(Fmt.clock(n.start)) – \(Fmt.clock(n.end))").font(WFont.number(16, weight: .semibold)).foregroundColor(.white)
-                                Spacer()
-                                Text(Fmt.hm(Double(n.asleepSec))).font(WFont.number(16, weight: .bold)).foregroundColor(Theme.sleep)
+                            VStack(alignment: .leading, spacing: 9) {
+                                HStack {
+                                    Text("\(Fmt.clock(n.start)) – \(Fmt.clock(n.end))").font(WFont.number(16, weight: .semibold)).foregroundColor(.white)
+                                    Spacer()
+                                    Text(Fmt.hm(Double(n.asleepSec))).font(WFont.number(16, weight: .bold)).foregroundColor(Theme.sleep)
+                                }
+                                if canAttach(n, to: s, day: d) {
+                                    Button {
+                                        app.setSleepEdit(date: date, start: min(s.start, n.start), end: max(s.end, n.end))
+                                    } label: {
+                                        Text("C'est la suite de ma nuit · rattacher")
+                                            .wLabel(10.5, color: Theme.accentBlue, tracking: 0.7)
+                                            .padding(.vertical, 4)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.pressable)
+                                }
                             }
                         }
                     }
@@ -59,6 +72,13 @@ struct SleepDetailView: View {
                     StatTile(title: "FC moyenne", value: Fmt.int(s.avgHR), unit: "bpm"),
                 ])
                 .padding(.top, 14)
+                if let note = awakeningNote(s) {
+                    Text(note)
+                        .font(WFont.text(11.5)).foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 14).padding(.horizontal, 4)
+                }
                 if let u = s.unobservedSec, u >= 600 {
                     Text("\(u / 60) min de cette nuit n'ont pas été reçues du bracelet : elles ne comptent ni comme sommeil ni comme éveil.")
                         .font(WFont.text(11.5)).foregroundColor(Theme.alarmOrange)
@@ -98,6 +118,27 @@ struct SleepDetailView: View {
                              selection: app.settings.sleepStats) { app.settings.sleepStats = $0 }
         }
         .sheet(item: $info) { InfoSheet(title: $0.title, text: $0.text) }
+    }
+
+    /// A nap within a few hours of the night can be put back into it in one tap (the detector
+    /// only does it by itself when the awakening clearly belongs to the night).
+    private func canAttach(_ n: SleepSession, to s: SleepSession, day d: DayMetrics) -> Bool {
+        guard !d.imported, !app.settings.demoMode else { return false }
+        let gap = n.start >= s.end ? n.start - s.end : s.start - n.end
+        return gap >= 0 && gap <= 6 * 3600 && max(s.end, n.end) - min(s.start, n.start) <= 20 * 3600
+    }
+
+    /// The long awakenings inside the night, said in words: they are part of the same night.
+    private func awakeningNote(_ s: SleepSession) -> String? {
+        let firstSleep = s.stages.first { $0.stage != .wake }?.start ?? s.start
+        let lastSleep = s.stages.last { $0.stage != .wake }?.end ?? s.end
+        let long = s.stages.filter { $0.stage == .wake && $0.duration >= 20 * 60 && $0.start >= firstSleep && $0.end <= lastSleep }
+        guard let w = long.first else { return nil }
+        if long.count == 1 {
+            return "Réveil de \(Fmt.duration(w.duration)) à \(Fmt.clock(w.start)), puis retour au sommeil : c'est la même nuit, et ce temps compte comme éveil."
+        }
+        let total = long.reduce(0) { $0 + $1.duration }
+        return "\(long.count) réveils prolongés (\(Fmt.duration(total)) au total), chacun suivi d'un retour au sommeil : c'est la même nuit, et ce temps compte comme éveil."
     }
 
     private func pager(_ d: DayMetrics) -> some View {

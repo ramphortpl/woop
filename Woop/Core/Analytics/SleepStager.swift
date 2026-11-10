@@ -56,9 +56,51 @@ enum SleepStager {
         let feats = features(slice, start: start, end: end)
         guard !feats.isEmpty else { return [] }
         let labels = stageEpochs(feats, priors: logPriors(priors))
-        // One segment per staged epoch. A second we did not observe has no stage: an epoch with
-        // no heart rate is skipped (a still strap with no pulse is not sleep), and a coverage
-        // hole is left open instead of being carried by the previous label.
+        return segments(feats, labels, start: start, end: end)
+    }
+
+    /// Stage every run of ONE night together.
+    ///
+    /// A night cut by awakenings is still one night: the heart-rate, variability, movement and
+    /// breathing features are normalised over all its runs, and the sleep-cycle prior follows the
+    /// night's own clock. A 40-minute return to sleep at 06:00 is then read against the whole
+    /// night (late, REM-rich) instead of against itself (as if a new night began with deep sleep).
+    /// Each run is decoded on its own: the time between two runs is not staged here.
+    /// - Returns: one hypnogram per run, in the order given.
+    static func stageNight(samples: [HistorySample], runs: [(start: Int, end: Int)],
+                           priors: Calibration.StageShares? = nil) -> [[StageSegment]] {
+        guard runs.count > 1, let first = runs.map(\.start).min(), let last = runs.map(\.end).max() else {
+            return runs.map { stage(samples: samples, start: $0.start, end: $0.end, priors: priors) }
+        }
+        let raws = runs.map { r in
+            rawFeatures(TimeIndex.slice(samples, from: r.start - padLo, to: r.end + padHi), start: r.start, end: r.end)
+        }
+        var allJerks: [Double] = []
+        for run in raws { for r in run { allJerks.append(contentsOf: r.jerks) } }
+        let scale = Stats.median(allJerks) ?? 1e-6
+        let feats = raws.map { finish($0, jerkScale: scale, origin: first, span: last - first) }
+        let norm = Norm(feats.flatMap { $0 })
+        let logP = logPriors(priors)
+        var seqs = feats.map { emissions($0, norm: norm, priors: logP) }
+        // REM latency runs from the night's first sustained sleep, not from each run's.
+        var origin: Double?
+        for (k, f) in feats.enumerated() where !f.isEmpty {
+            if let i = sustainedOnset(viterbi(seqs[k])) { origin = f[i].minutes; break }
+        }
+        let onset = origin ?? feats.first { !$0.isEmpty }?.first?.minutes ?? 0
+        var out: [[StageSegment]] = []
+        for (k, f) in feats.enumerated() {
+            guard !f.isEmpty else { out.append([]); continue }
+            for i in f.indices { seqs[k][i][.rem]! -= remLatencyGuard(f[i].minutes - onset) }
+            out.append(segments(f, viterbi(seqs[k]), start: runs[k].start, end: runs[k].end))
+        }
+        return out
+    }
+
+    /// One segment per staged epoch. A second we did not observe has no stage: an epoch with
+    /// no heart rate is skipped (a still strap with no pulse is not sleep), and a coverage
+    /// hole is left open instead of being carried by the previous label.
+    static func segments(_ feats: [Epoch], _ labels: [SleepStage], start: Int, end: Int) -> [StageSegment] {
         var segs: [StageSegment] = []
         for (i, f) in feats.enumerated() where f.hr != nil {
             var s = f.start
@@ -83,7 +125,34 @@ enum SleepStager {
 
     // MARK: Features
 
+    /// One epoch before the night-relative scaling.
+    struct RawEpoch {
+        let start: Int; let hr: Double?; let hrVar: Double?; let hrFlat11: Double?
+        let jerks: [Double]; let jerkMax: Double; let respReg: Double?
+    }
+
     static func features(_ s: ArraySlice<HistorySample>, start: Int, end: Int) -> [Epoch] {
+        let raws = rawFeatures(s, start: start, end: end)
+        var allJerks: [Double] = []
+        for r in raws { allJerks.append(contentsOf: r.jerks) }
+        return finish(raws, jerkScale: Stats.median(allJerks) ?? 1e-6, origin: start, span: end - start)
+    }
+
+    /// Scale raw epochs: movement against `jerkScale`, the position in the night against
+    /// `[origin, origin + span)`.
+    static func finish(_ raws: [RawEpoch], jerkScale: Double, origin: Int, span: Int) -> [Epoch] {
+        let moveThr = jerkScale * jerkFloorMoveMult
+        let length = Double(max(1, span))
+        return raws.map { r in
+            let moves = r.jerks.filter { $0 > moveThr }.count
+            return Epoch(start: r.start, hr: r.hr, hrVar: r.hrVar, hrFlat11: r.hrFlat11,
+                         moveFrac: r.jerks.isEmpty ? 0 : Double(moves) / Double(r.jerks.count),
+                         jerkMax: r.jerkMax, respReg: r.respReg, clock: Double(r.start + 15 - origin) / length,
+                         jerkScale: max(jerkScale, 1e-6), minutes: Double(r.start + 15 - origin) / 60)
+        }
+    }
+
+    static func rawFeatures(_ s: ArraySlice<HistorySample>, start: Int, end: Int) -> [RawEpoch] {
         guard end > start else { return [] }
         let lo = start - padLo, hi = end + padHi
         let n = hi - lo
@@ -115,13 +184,7 @@ enum SleepStager {
         }
         let beats = HRV.beats(s)
 
-        struct Raw {
-            let start: Int; let hr: Double?; let hrVar: Double?; let hrFlat11: Double?
-            let jerks: [Double]; let jerkMax: Double; let respReg: Double?; let clock: Double; let minutes: Double
-        }
-        var raws: [Raw] = []
-        var allJerks: [Double] = []
-        let span = Double(max(1, end - start))
+        var raws: [RawEpoch] = []
         var e = ((start + 29) / 30) * 30
         while e < end {
             var hrs: [Double] = []
@@ -135,23 +198,13 @@ enum SleepStager {
                 }
             }
             if hrs.isEmpty && jerks.isEmpty { e += 30; continue }
-            allJerks.append(contentsOf: jerks)
             let rsa = respRegularity(HRV.window(beats, from: e - 90, to: e + 120))
-            raws.append(Raw(start: e, hr: Stats.mean(hrs), hrVar: stdOf(e - 150, e + 180),
-                            hrFlat11: stdOf(e - 330, e + 390), jerks: jerks, jerkMax: jerks.max() ?? 0,
-                            respReg: rsa, clock: Double(e + 15 - start) / span,
-                            minutes: Double(e + 15 - start) / 60))
+            raws.append(RawEpoch(start: e, hr: Stats.mean(hrs), hrVar: stdOf(e - 150, e + 180),
+                                 hrFlat11: stdOf(e - 330, e + 390), jerks: jerks, jerkMax: jerks.max() ?? 0,
+                                 respReg: rsa))
             e += 30
         }
-        let jerkScale = Stats.median(allJerks) ?? 1e-6
-        let moveThr = jerkScale * jerkFloorMoveMult
-        return raws.map { r in
-            let moves = r.jerks.filter { $0 > moveThr }.count
-            return Epoch(start: r.start, hr: r.hr, hrVar: r.hrVar, hrFlat11: r.hrFlat11,
-                         moveFrac: r.jerks.isEmpty ? 0 : Double(moves) / Double(r.jerks.count),
-                         jerkMax: r.jerkMax, respReg: r.respReg, clock: r.clock,
-                         jerkScale: max(jerkScale, 1e-6), minutes: r.minutes)
-        }
+        return raws
     }
 
     /// RSA breathing regularity: spectral peakedness (peak / band power) in 0.15–0.40 Hz of the
@@ -258,31 +311,48 @@ enum SleepStager {
                 .rem: log(max(p.rem, 0.08)), .wake: log(Stats.clamp(p.awake, 0.04, 0.25))]
     }
 
-    static func stageEpochs(_ feats: [Epoch], priors: [SleepStage: Double] = baseLogPrior) -> [SleepStage] {
-        guard !feats.isEmpty else { return [] }
-        func zfun(_ vals: [Double?]) -> (Double?) -> Double {
-            let present = vals.compactMap { $0 }
-            guard let m = Stats.mean(present) else { return { _ in 0 } }
-            let sd0 = Stats.std(present) ?? 0
-            let sd = sd0 == 0 ? 1 : sd0
-            return { v in v.map { ($0 - m) / sd } ?? 0 }
+    /// Night-relative scaling of the features (z-scores and the HR-flatness percentile).
+    struct Norm {
+        let hr: (mean: Double, sd: Double)?
+        let hrVar: (mean: Double, sd: Double)?
+        let move: (mean: Double, sd: Double)?
+        let resp: (mean: Double, sd: Double)?
+        let flat: [Double]
+
+        init(_ feats: [Epoch]) {
+            func stats(_ vals: [Double?]) -> (mean: Double, sd: Double)? {
+                let present = vals.compactMap { $0 }
+                guard let m = Stats.mean(present) else { return nil }
+                let sd0 = Stats.std(present) ?? 0
+                return (m, sd0 == 0 ? 1 : sd0)
+            }
+            hr = stats(feats.map(\.hr))
+            hrVar = stats(feats.map(\.hrVar))
+            move = stats(feats.map { Optional($0.moveFrac) })
+            resp = stats(feats.map(\.respReg))
+            flat = feats.compactMap(\.hrFlat11).sorted()
         }
-        let zhr = zfun(feats.map(\.hr))
-        let zhv = zfun(feats.map(\.hrVar))
-        let zmv = zfun(feats.map { Optional($0.moveFrac) })
-        let zrg = zfun(feats.map(\.respReg))
-        let flat = feats.compactMap(\.hrFlat11).sorted()
-        func fpct(_ v: Double?) -> Double {
+
+        static func z(_ v: Double?, _ s: (mean: Double, sd: Double)?) -> Double {
+            guard let v, let s else { return 0 }
+            return (v - s.mean) / s.sd
+        }
+
+        func flatPercentile(_ v: Double?) -> Double {
             guard let v, !flat.isEmpty else { return 0.5 }
             var lo = 0, hi = flat.count
             while lo < hi { let mid = (lo + hi) / 2; if flat[mid] <= v { lo = mid + 1 } else { hi = mid } }
             return Double(lo) / Double(flat.count)
         }
+    }
+
+    /// Per-epoch log-emissions (before the REM-latency guard).
+    static func emissions(_ feats: [Epoch], norm: Norm, priors: [SleepStage: Double]) -> [[SleepStage: Double]] {
         var seq: [[SleepStage: Double]] = []
         seq.reserveCapacity(feats.count)
         for f in feats {
-            let zh = zhr(f.hr), zv = zhv(f.hrVar), zm = zmv(f.moveFrac)
-            let gate = deepGateSlope * max(0, fpct(f.hrFlat11) - deepGateThresh)
+            let zh = Norm.z(f.hr, norm.hr), zv = Norm.z(f.hrVar, norm.hrVar), zm = Norm.z(f.moveFrac, norm.move)
+            let gate = deepGateSlope * max(0, norm.flatPercentile(f.hrFlat11) - deepGateThresh)
             let quiescent = f.moveFrac <= 0 && f.jerkMax <= f.jerkScale * jerkFloorGateMult
             let cardiac0 = 0.8 * zv + 0.4 * zh
             let cardiac = quiescent ? min(0, cardiac0) : cardiac0
@@ -296,12 +366,18 @@ enum SleepStager {
             for s in stages { em[s]! += pr[s]! }
             if f.jerkMax > f.jerkScale * jerkFloorGateMult { em[.wake]! += motionGateBoost }
             if let rg = f.respReg {
-                let z = zrg(rg)
+                let z = Norm.z(rg, norm.resp)
                 em[.deep]! += respWeight * z
                 em[.rem]! -= respWeight * z
             }
             seq.append(em)
         }
+        return seq
+    }
+
+    static func stageEpochs(_ feats: [Epoch], priors: [SleepStage: Double] = baseLogPrior) -> [SleepStage] {
+        guard !feats.isEmpty else { return [] }
+        var seq = emissions(feats, norm: Norm(feats), priors: priors)
         let provisional = viterbi(seq)
         let origin = sustainedOnset(provisional).map { feats[$0].minutes } ?? 0
         for i in feats.indices {

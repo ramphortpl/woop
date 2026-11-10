@@ -7,8 +7,99 @@ struct SleepRun: Equatable, Sendable {
     var end: Int
     /// Found from heart rate alone (no motion data for this stretch).
     var hrOnly = false
+    /// A short sleep, under the spine's one-hour floor: a night tail the spine kept, or a bout
+    /// found by the short-sleep detector.
+    var bout = false
 
     var duration: Int { max(0, end - start) }
+}
+
+/// The wearer's usual night on the local clock, learned from their own recent nights.
+///
+/// It answers one question for the night assembly: "is this awakening still inside the night?"
+/// A return to sleep at 05:00 continues the night of someone who sleeps 23:00 → 07:30; a sleep
+/// at 14:00 does not. A late sleeper (03:00 → 10:30) has the same right at 10:00.
+struct NightHabit: Equatable, Sendable {
+    /// Usual bedtime and wake time (circular means), local seconds of day.
+    var bedSec: Int
+    var wakeSec: Int
+    /// The early end of the usual bedtimes and the late end of the usual wake times (quartiles):
+    /// the night window is drawn between these, so an irregular sleeper gets a wider one.
+    var bedEarlySec: Int
+    var wakeLateSec: Int
+    /// Learned from the wearer's own nights (false = the built-in 23:00 → 08:00).
+    var learned = false
+
+    static let standard = NightHabit(bedSec: 23 * 3600, wakeSec: 8 * 3600, bedEarlySec: 23 * 3600, wakeLateSec: 8 * 3600)
+    static let minNights = 5
+    static let maxNights = 30
+    /// Below this resultant length the clock times are too scattered to have a mean.
+    static let minConcentration = 0.35
+
+    static func wrap(_ sec: Int) -> Int { ((sec % 86400) + 86400) % 86400 }
+
+    /// Circular mean of clock times and their offsets from it (in −12 h ..< +12 h).
+    static func circular(_ secs: [Int]) -> (mean: Int, offsets: [Int])? {
+        guard !secs.isEmpty else { return nil }
+        let k = 2 * Double.pi / 86400
+        var sumSin = 0.0, sumCos = 0.0
+        for s in secs { sumSin += sin(Double(s) * k); sumCos += cos(Double(s) * k) }
+        let resultant = (sumSin * sumSin + sumCos * sumCos).squareRoot() / Double(secs.count)
+        guard resultant >= minConcentration else { return nil }
+        var ang = atan2(sumSin, sumCos)
+        if ang < 0 { ang += 2 * Double.pi }
+        let mean = wrap(Int((ang / k).rounded()))
+        let offsets = secs.map { s -> Int in
+            let d = wrap(s - mean)
+            return d >= 43200 ? d - 86400 : d
+        }
+        return (mean, offsets)
+    }
+
+    static func learn(_ nights: [(start: Int, end: Int)], tz: (Int) -> Int) -> NightHabit {
+        let recent = nights.suffix(maxNights)
+        guard recent.count >= minNights,
+              let bed = circular(recent.map { wrap($0.start + tz($0.start)) }),
+              let wake = circular(recent.map { wrap($0.end + tz($0.end)) }) else { return .standard }
+        func quartile(_ v: [Int], _ p: Double) -> Int {
+            let sorted = v.sorted()
+            return sorted[min(sorted.count - 1, max(0, Int((Double(sorted.count - 1) * p).rounded())))]
+        }
+        let h = NightHabit(bedSec: bed.mean, wakeSec: wake.mean,
+                           bedEarlySec: wrap(bed.mean + quartile(bed.offsets, 0.25)),
+                           wakeLateSec: wrap(wake.mean + quartile(wake.offsets, 0.75)), learned: true)
+        let length = wrap(h.wakeLateSec - h.bedEarlySec)
+        guard length >= 3 * 3600, length <= 15 * 3600 else { return .standard }
+        return h
+    }
+
+    /// Seconds from the opening of the night window (`bedEarly − lead`) to the local clock of `unix`.
+    func offset(_ unix: Int, lead: Int, tz: (Int) -> Int) -> Int {
+        Self.wrap(Self.wrap(unix + tz(unix)) - (bedEarlySec - lead))
+    }
+
+    /// Length of the night window `[bedEarly − lead, wakeLate + lag]`.
+    func length(lead: Int, lag: Int) -> Int { Self.wrap(wakeLateSec - bedEarlySec) + lead + lag }
+
+    /// Is the instant inside the night window?
+    func contains(_ unix: Int, lead: Int, lag: Int, tz: (Int) -> Int) -> Bool {
+        offset(unix, lead: lead, tz: tz) <= length(lead: lead, lag: lag)
+    }
+
+    /// Do `a` and `b` (a ≤ b) both fall inside ONE night window `[bedEarly − lead, wakeLate + lag]`?
+    func covers(_ a: Int, _ b: Int, lead: Int, lag: Int, tz: (Int) -> Int) -> Bool {
+        guard b >= a else { return false }
+        let len = length(lead: lead, lag: lag)
+        guard len < 86400 else { return true }
+        let off = offset(a, lead: lead, tz: tz)
+        return off <= len && off + (b - a) <= len
+    }
+
+    /// The awakening happened around the usual wake time or later (from one hour before it):
+    /// the wearer may simply have got up for the day.
+    func isMorning(_ unix: Int, lead: Int, margin: Int, tz: (Int) -> Int) -> Bool {
+        offset(unix, lead: lead, tz: tz) >= Self.wrap(wakeSec - margin - (bedEarlySec - lead))
+    }
 }
 
 /// Runs that belong to one night: the time between two runs is an awakening, not a new sleep.
@@ -37,8 +128,12 @@ struct NightGroup: Equatable, Sendable {
 ///    heart rate in the sleep band (widened when the wrist is perfectly quiescent), mostly on
 ///    the wrist, and — when centred in the daytime — a real resting-heart-rate dip. A re-onset
 ///    shortly after the morning wake needs the strap's own "asleep" state or a deeper dip.
-/// 4. Runs separated by < 60 min (≤ 90 min overnight) form one night; the main night of a day
-///    is the group with the most sleep, helped by how close it sits to the usual mid-sleep.
+/// 4. Runs separated by an awakening form ONE night: under an hour always, up to 90 min
+///    overnight, and — beyond both references — up to 3 h (5 h for an insomnia) when the
+///    awakening lies inside the wearer's own usual night (`NightHabit`). Short returns to sleep
+///    the spine drops (under its one-hour floor) are found by the bout detector and attached to
+///    the night they continue. A return to sleep is never a nap. The main night of a day is the
+///    group with the most sleep, helped by how close it sits to the usual mid-sleep.
 /// 5. The strap's own wake/sleep envelope (WHOOP 5.0 / MG) never creates a night: it only
 ///    confirms a borderline one and trims a lie-in at the end.
 /// 6. Stretches with a heart rate but no motion data (live-only seconds) fall back to a
@@ -90,6 +185,8 @@ enum SleepSpine {
     static let evidenceHRRatioNoBand = 1.20
     static let evidenceHRRatioNoBandLong = 1.30
     static let evidenceLongRunS = 3 * 3600
+    /// A short sleep that would become the start of the night, judged by heart rate alone.
+    static let leadingBoutHRRatio = 1.10
     /// The strap's envelope only counts as a witness when it is alive: it must have reported
     /// "asleep" for at least this long somewhere in the window. A strap (or firmware) that never
     /// leaves "wake" says nothing about any particular stretch.
@@ -108,6 +205,23 @@ enum SleepSpine {
     static let hrOnlyMinCoreFraction = 0.25
     static let hrOnlyEpochS = 60
     static let hrOnlyHoleS = 600
+    // Night assembly: a return to sleep during the night continues that night.
+    /// An awakening this long, inside the wearer's night, is still the same night.
+    static let nightAwakeMaxMin = 180
+    /// …and up to this long when the whole awakening sits before the usual wake time (insomnia).
+    static let nightInsomniaMaxMin = 300
+    static let nightWindowLeadS = 3600
+    static let nightWindowLagS = 2 * 3600
+    static let morningMarginS = 3600
+    /// A chain this long is a night whatever the clock says (an unusually early bedtime).
+    static let anchoredSpanS = 2 * 3600
+    /// Steps walked during an awakening beyond which the wearer was up and about…
+    static let upAndAboutSteps = 1000
+    /// …or this many minutes at an exercise-level heart rate (a workout between two sleeps).
+    static let upAndAboutExerciseMin = 10
+    /// A short sleep joins the night across an awakening of at least this long only when the
+    /// wearer stayed put.
+    static let boutQuietGapS = 30 * 60
     // Night grouping / main-night choice.
     static let groupGapMin = 60
     static let alignmentBonusMin = 90.0
@@ -238,6 +352,11 @@ enum SleepSpine {
         var hrBaseline: Double?
         /// True when the motion stream covers less than half of the heart-rate span.
         var gravitySparse = false
+        /// The heart-rate index and the strap's envelope (empty when it is not alive), kept
+        /// to judge the short sleeps next to the nights.
+        var hr = HRIndex()
+        var bandTs: [Int] = []
+        var bandState: [Int8] = []
     }
 
     /// Detect every sleep run in a ts-sorted slice.
@@ -286,6 +405,9 @@ enum SleepSpine {
             }
         }
         out.runs = runs.sorted { $0.start < $1.start }
+        out.hr = hr
+        out.bandTs = bandTs
+        out.bandState = bandState
         return out
     }
 
@@ -617,6 +739,29 @@ enum SleepSpine {
         return ratio <= (p.span >= evidenceLongRunS ? evidenceHRRatioNoBandLong : evidenceHRRatioNoBand)
     }
 
+    /// Is a short still stretch next to a night really sleep?
+    ///
+    /// The same two witnesses as for a run. When the stretch would become the START of the
+    /// night (`leading`), a mistake moves the bedtime and adds a false awakening, so it must be
+    /// plain: the strap itself calls most of it asleep, or — with no strap state — the heart
+    /// rate sits right at the sleeping level (reading or a film in bed sits above it).
+    static func boutIsSleep(_ r: SleepRun, leading: Bool, hr: HRIndex, bandTs: [Int], bandState: [Int8]) -> Bool {
+        let p = Period(sleep: true, start: r.start, end: r.end - 1)
+        guard hasSleepEvidence(p, hr: hr, bandTs: bandTs, bandState: bandState) else { return false }
+        guard leading else { return true }
+        let lo = TimeIndex.lowerBound(bandTs, p.start) { $0 }
+        let hi = TimeIndex.lowerBound(bandTs, p.end + 1) { $0 }
+        if Double(hi - lo) >= evidenceMinBandCoverage * Double(max(1, p.span)) {
+            var asleep = 0
+            for i in lo..<hi where bandState[i] == bandSleep { asleep += 1 }
+            return Double(asleep) >= evidenceBandAccept * Double(hi - lo)
+        }
+        guard let s = hr.stats(p.start, p.end), s.count >= hrRefineMinSamples,
+              let trough = hr.percentile(hrOnlyAnchorPercentile, from: p.start - evidenceNeighbourhoodS,
+                                         to: p.end + evidenceNeighbourhoodS), trough > 0 else { return false }
+        return s.median / trough <= leadingBoutHRRatio
+    }
+
     static func acceptRuns(_ periods: [Period], hr: HRIndex, baseline: Double?, tz: (Int) -> Int,
                            wristOff: [(start: Int, end: Int)],
                            gTs: [Int], gx: [Float], gy: [Float], gz: [Float],
@@ -661,7 +806,9 @@ enum SleepSpine {
                 if !ok { continue }
             }
 
-            runs.append(SleepRun(start: p.start, end: p.end + 1))
+            // A tail under the one-hour floor is kept as a short sleep: the night assembly
+            // attaches it to its night unless the wearer had got up and walked off in between.
+            runs.append(SleepRun(start: p.start, end: p.end + 1, bout: p.span <= minSleepS))
             if !continuesChain {
                 chainFromOvernight = isOvernightOnset(p.start, tz: tz)
                 nightTailAccepted = false
@@ -740,30 +887,149 @@ enum SleepSpine {
 
     // MARK: - Nights
 
-    /// Chain runs into nights: a gap under an hour (or ≤ 90 min when the chain is overnight) is
-    /// an awakening inside one night.
-    static func groupNights(_ runs: [SleepRun], tz: (Int) -> Int) -> [NightGroup] {
+    /// What the wearer did during an awakening.
+    enum GapActivity: Equatable, Sendable {
+        /// Stayed put: few steps, no effort.
+        case quiet
+        /// Got up and walked off, or exercised: the day had started.
+        case upAndAbout
+        /// No step counter for this stretch, and no effort seen.
+        case unknown
+    }
+
+    /// What the night assembly knows besides the runs themselves.
+    struct NightContext {
+        var habit: NightHabit = .standard
+        var tz: (Int) -> Int
+        /// What happened in `[a, b)` between two sleeps.
+        var activity: (Int, Int) -> GapActivity = { _, _ in .unknown }
+    }
+
+    /// Classify an awakening from the steps walked (nil = no counter) and the minutes spent at
+    /// an exercise-level heart rate.
+    static func gapActivity(steps: Int?, exerciseMinutes: Int) -> GapActivity {
+        if exerciseMinutes >= upAndAboutExerciseMin { return .upAndAbout }
+        guard let steps else { return .unknown }
+        return steps >= upAndAboutSteps ? .upAndAbout : .quiet
+    }
+
+    /// Does a sleep starting at `nextStart` continue the night `chain`?
+    ///
+    /// 1. Under an hour apart: one sleep with an awakening in it.
+    /// 2. Up to 90 minutes when the chain is overnight (the reference rule).
+    /// 3. Up to 3 hours when the whole awakening lies inside the wearer's night (their usual
+    ///    bedtime − 1 h … usual wake time + 2 h) and they did not get up and go: they woke up and
+    ///    went back to sleep. Around the usual wake time, only when they are known to have
+    ///    stayed put (few steps) — otherwise they simply got up.
+    /// 4. Up to 5 hours when the awakening ends before the usual wake time, on the same
+    ///    condition: a long insomnia is still one night.
+    ///
+    /// A short sleep (`bout`) never joins a night across an awakening during which the wearer
+    /// was up and about: that one is a nap.
+    static func continuesNight(_ chain: NightGroup, nextStart: Int, nextIsBout: Bool, _ ctx: NightContext) -> Bool {
+        let prevEnd = chain.end
+        let gap = nextStart - prevEnd
+        if gap < 0 { return true }
+        let tz = ctx.tz
+        let onlyBouts = chain.runs.allSatisfy(\.bout)
+        var known: GapActivity?
+        func activity() -> GapActivity {
+            if let k = known { return k }
+            let k = ctx.activity(prevEnd, nextStart)
+            known = k
+            return k
+        }
+        if (nextIsBout || onlyBouts) && gap >= boutQuietGapS && activity() == .upAndAbout { return false }
+        if gap < groupGapMin * 60 { return true }
+        // A chain made only of short sleeps is a night only if it began inside the wearer's
+        // night (a doze on the sofa at 20:30 is not the start of the night); a chain with a
+        // real run is one when it began there or already lasts two hours.
+        let inNight = ctx.habit.contains(chain.start, lead: nightWindowLeadS, lag: nightWindowLagS, tz: tz)
+        let anchored = inNight || (!onlyBouts && prevEnd - chain.start >= anchoredSpanS)
+        if gap <= nightContinuationGapMin * 60 {
+            let overnight = isOvernightOnset(nextStart, tz: tz) || chain.runs.contains { isOvernightOnset($0.start, tz: tz) }
+            if overnight && (!onlyBouts || anchored) { return true }
+        }
+        guard anchored else { return false }
+        if gap <= nightAwakeMaxMin * 60,
+           ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: nightWindowLagS, tz: tz) {
+            let morning = ctx.habit.isMorning(prevEnd, lead: nightWindowLeadS, margin: morningMarginS, tz: tz)
+            if morning ? activity() == .quiet : activity() != .upAndAbout { return true }
+        }
+        if gap <= nightInsomniaMaxMin * 60,
+           ctx.habit.covers(prevEnd, nextStart, lead: nightWindowLeadS, lag: 0, tz: tz),
+           activity() != .upAndAbout {
+            return true
+        }
+        return false
+    }
+
+    /// Chain runs into nights: the time between two chained runs is an awakening inside one
+    /// night, not a new sleep (see `continuesNight`).
+    static func groupNights(_ runs: [SleepRun], _ ctx: NightContext) -> [NightGroup] {
         let sorted = runs.sorted { $0.start < $1.start }
         var out: [NightGroup] = []
         for r in sorted {
-            if var last = out.last {
-                let gap = r.start - last.end
-                let chain: Bool
-                if gap < 0 { chain = true }
-                else if gap < groupGapMin * 60 { chain = true }
-                else {
-                    chain = gap <= nightContinuationGapMin * 60
-                        && (isOvernightOnset(r.start, tz: tz) || last.runs.contains { isOvernightOnset($0.start, tz: tz) })
-                }
-                if chain {
-                    last.runs.append(r)
-                    out[out.count - 1] = last
-                    continue
-                }
+            if var last = out.last, continuesNight(last, nextStart: r.start, nextIsBout: r.bout, ctx) {
+                last.runs.append(r)
+                out[out.count - 1] = last
+                continue
             }
             out.append(NightGroup(runs: [r]))
         }
         return out
+    }
+
+    /// Build the nights from the spine's runs and the short sleeps it does not keep on its own.
+    ///
+    /// A short sleep next to a night (inside one of its awakenings, or before / after it by the
+    /// rules of `continuesNight`) is that night going on — provided it really is sleep
+    /// (`evidence`: the strap's own verdict and the heart rate against the sleeping level);
+    /// otherwise it is quiet wakefulness in bed and counts nowhere. Every other short sleep
+    /// stands on its own: a nap.
+    /// - Parameter evidence: is this short stretch sleep? `leading` is true when it would move
+    ///   the onset of its night earlier, which asks for stronger proof.
+    static func assembleNights(runs: [SleepRun], bouts: [SleepRun], _ ctx: NightContext,
+                               evidence: (_ bout: SleepRun, _ leading: Bool) -> Bool) -> [NightGroup] {
+        var accepted = runs
+        var pending = bouts.sorted { $0.start < $1.start }
+        var changed = true
+        while changed && !pending.isEmpty {
+            changed = false
+            let nights = groupNights(accepted, ctx)
+            var rest: [SleepRun] = []
+            for b in pending {
+                let prev = nights.last { $0.start <= b.start }
+                let next = nights.first { $0.start > b.start }
+                var attaches = false, leading = false
+                if let prev, b.start < prev.end {
+                    attaches = true // inside one of the night's awakenings
+                } else if let prev, continuesNight(prev, nextStart: b.start, nextIsBout: true, ctx) {
+                    attaches = true
+                } else if let next, continuesNight(NightGroup(runs: [b]), nextStart: next.start, nextIsBout: false, ctx) {
+                    attaches = true
+                    leading = true
+                }
+                if attaches {
+                    if evidence(b, leading) { accepted.append(b) }
+                    changed = true
+                } else {
+                    rest.append(b)
+                }
+            }
+            pending = rest
+        }
+        // Short sleeps away from any night: naps (two of them under an hour apart are one).
+        var naps: [NightGroup] = []
+        for b in pending {
+            if var last = naps.last, b.start - last.end < groupGapMin * 60 {
+                last.runs.append(b)
+                naps[naps.count - 1] = last
+            } else {
+                naps.append(NightGroup(runs: [b]))
+            }
+        }
+        return (groupNights(accepted, ctx) + naps).sorted { $0.start < $1.start }
     }
 
     static func circularDistance(_ a: Int, _ b: Int) -> Int {
@@ -865,10 +1131,11 @@ enum SleepSpine {
     }
 }
 
-/// Daytime naps: sustained wrist immobility (van Hees z-angle) outside the nights, backed by a
-/// heart-rate dip against the wearer's own awake level — and by the strap's own "asleep" state
-/// when it reports one. Stillness alone is also desk work, reading or a film.
-/// Adapted from OpenStrap `detectNaps`.
+/// Short sleeps: sustained wrist immobility (van Hees z-angle) outside the spine's runs, backed
+/// by a heart-rate dip against the wearer's own awake level — and by the strap's own "asleep"
+/// state when it reports one. Stillness alone is also desk work, reading or a film.
+/// Adapted from OpenStrap `detectNaps`. Whether a bout is a nap or a return to sleep that
+/// continues the night is decided by `SleepSpine.assembleNights`, not here.
 enum NapDetector {
     static let minNapSec = 15 * 60
     static let maxNapSec = 6 * 3600
@@ -893,9 +1160,9 @@ enum NapDetector {
         var asleepSec: Int
     }
 
-    /// - Parameter taken: `[start, end)` windows already attributed to a night or another sleep.
+    /// - Parameter taken: `[start, end)` windows the night spine already holds.
     static func detect(_ samples: ArraySlice<HistorySample>, taken: [(start: Int, end: Int)],
-                       mainEnd: Int?, wristOff: [(start: Int, end: Int)] = []) -> [Nap] {
+                       wristOff: [(start: Int, end: Int)] = []) -> [Nap] {
         var ts: [Int] = [], ang: [Double] = []
         ts.reserveCapacity(samples.count); ang.reserveCapacity(samples.count)
         var hr = SleepSpine.HRIndex()
@@ -978,9 +1245,6 @@ enum NapDetector {
             // Baseline: awake heart rate outside this bout (it is outside by construction).
             let baseline = SleepSpine.HRIndex.percentile(awakeHist, total: awakeN, p: 0.5, interpolate: true)
             guard baseline > 0, s.median <= baseline * restingHRMult else { continue }
-            // A short still block right after the night is the night going on, not a nap.
-            if let mainEnd, tib <= SleepSpine.minSleepMin * 60, start >= mainEnd,
-               start - mainEnd <= SleepSpine.nightContinuationGapMin * 60 { continue }
             // The strap's own verdict, when it has one for this stretch.
             let lo = TimeIndex.lowerBound(bandTs, start) { $0 }
             let hi = TimeIndex.lowerBound(bandTs, end) { $0 }

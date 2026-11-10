@@ -131,7 +131,7 @@ struct ActivityRecord: Codable, Equatable, Sendable, Identifiable {
 
 /// Everything shown for one day ("cycle" in WHOOP terms: from the night's sleep to the next).
 struct DayMetrics: Codable, Equatable, Sendable {
-    static let algoVersion = 4
+    static let algoVersion = 5
 
     var date: String
     var algoVersion: Int = DayMetrics.algoVersion

@@ -43,6 +43,9 @@ struct NotifyLog: Codable, Equatable, Sendable {
     var activities: [Window] = []
     var recoveryDay: String?
     var sleepDay: String?
+    /// End (unix s) of the night the morning notification was about: a later, longer night
+    /// (the wearer went back to sleep) is announced once more.
+    var sleepEndNotified: Int?
     var healthDay: String?
     var strainTargetDay: String?
     var strainOverDay: String?
@@ -58,6 +61,7 @@ extension NotifyLog {
         activities = (try? c.decodeIfPresent([Window].self, forKey: .activities)) ?? []
         recoveryDay = try? c.decodeIfPresent(String.self, forKey: .recoveryDay)
         sleepDay = try? c.decodeIfPresent(String.self, forKey: .sleepDay)
+        sleepEndNotified = try? c.decodeIfPresent(Int.self, forKey: .sleepEndNotified)
         healthDay = try? c.decodeIfPresent(String.self, forKey: .healthDay)
         strainTargetDay = try? c.decodeIfPresent(String.self, forKey: .strainTargetDay)
         strainOverDay = try? c.decodeIfPresent(String.self, forKey: .strainOverDay)
@@ -103,6 +107,24 @@ enum NotificationPlanner {
     static let activitySettle = 10 * 60
     /// The night is over once this much awake data follows the last sleep minute.
     static let wakeSettle = 20 * 60
+    /// …but an awakening in the middle of the night is not the morning: unless the wearer is
+    /// clearly up and about, wait this long before announcing the night (they may well go back
+    /// to sleep, and that sleep belongs to the same night).
+    static let nightAwakeningSettle = 90 * 60
+    /// A night that grew by at least this much after it was announced is announced again.
+    static let nightExtendedBy = 30 * 60
+
+    /// How much awake data must follow the end of `s` before the night is announced.
+    static func settle(for d: DayMetrics, _ s: SleepSession, habit: NightHabit, tz: (Int) -> Int) -> Int {
+        let lead = SleepSpine.nightWindowLeadS
+        let inNight = habit.contains(s.end, lead: lead, lag: 0, tz: tz)
+            && !habit.isMorning(s.end, lead: lead, margin: SleepSpine.morningMarginS, tz: tz)
+        guard inNight else { return wakeSettle }
+        // The steps of the cycle are those walked since the night began: nearly all of them
+        // since getting up.
+        if let steps = d.steps, steps >= SleepSpine.upAndAboutSteps { return wakeSettle }
+        return nightAwakeningSettle
+    }
 
     static func plan(_ c: NotifyContext, log: inout NotifyLog) -> [PlannedNotification] {
         let yesterday = DayKey.adding(-1, to: c.today)
@@ -118,7 +140,7 @@ enum NotificationPlanner {
             for x in candidates { log.activities.append(.init(start: x.a.start, end: x.a.end)) }
             if let d = todayDay {
                 if d.recovery != nil { log.recoveryDay = c.today }
-                if d.sleep != nil { log.sleepDay = c.today; log.healthDay = c.today }
+                if let s = d.sleep { log.sleepDay = c.today; log.healthDay = c.today; log.sleepEndNotified = s.end }
                 if let r = d.recovery, let st = d.strain, let t = StrainTarget.forRecovery(r) {
                     if st >= t.lowerBound { log.strainTargetDay = c.today }
                     if st > t.upperBound + 1 { log.strainOverDay = c.today }
@@ -154,7 +176,18 @@ enum NotificationPlanner {
         }
 
         // Morning: recovery (or sleep while calibrating) and Health Monitor, once the night is over.
-        if let d = todayDay, let s = d.sleep, c.now - s.end < 8 * 3600, dataEnd >= s.end + wakeSettle {
+        let tz = DayEngine.tzOffset
+        let pastNights = c.days.values.filter { $0.date < c.today }.sorted { $0.date < $1.date }
+            .compactMap { d in d.sleep.map { (start: $0.start, end: $0.end) } }
+        let habit = NightHabit.learn(pastNights, tz: tz)
+        if let d = todayDay, let s = d.sleep, c.now - s.end < 8 * 3600,
+           dataEnd >= s.end + settle(for: d, s, habit: habit, tz: tz) {
+            let announced = log.recoveryDay == c.today || log.sleepDay == c.today
+            if announced, let before = log.sleepEndNotified, s.end >= before + nightExtendedBy,
+               c.prefs.recovery || c.prefs.sleep {
+                // Already announced this morning, and the wearer went back to sleep since.
+                out.append(nightExtended(d, s))
+            }
             if c.prefs.recovery, log.recoveryDay != c.today, let r = d.recovery {
                 out.append(recovery(d, r, s, firstName: c.firstName))
                 log.recoveryDay = c.today
@@ -164,6 +197,7 @@ enum NotificationPlanner {
                 out.append(sleep(d, s, perf))
                 log.sleepDay = c.today
             }
+            if log.recoveryDay == c.today || log.sleepDay == c.today { log.sleepEndNotified = s.end }
             if log.healthDay != c.today {
                 log.healthDay = c.today
                 let hist = c.days.values.filter { $0.date < c.today }.sorted { $0.date < $1.date }.suffix(30)
@@ -251,6 +285,16 @@ enum NotificationPlanner {
             body += " Calibrage de ta récupération : \(n)/\(Recovery.calibrationNights) nuits."
         }
         return PlannedNotification(id: "sleep-\(d.date)", kind: .sleep, title: "Sommeil analysé : \(Int(perf.rounded())) %",
+                                   body: body, route: "sleep:\(d.date)", thread: "morning")
+    }
+
+    /// The wearer went back to sleep after the night had been announced: the same night, longer.
+    static func nightExtended(_ d: DayMetrics, _ s: SleepSession) -> PlannedNotification {
+        var body = "Retour au sommeil pris en compte : ta nuit va maintenant jusqu'à \(Fmt.clock(s.end)), avec \(Fmt.hm(Double(s.asleepSec))) de sommeil"
+        if let p = d.sleepPerformance { body += " (\(Int(p.rounded())) % de ton besoin)" }
+        body += "."
+        if let r = d.recovery { body += " Récupération : \(Int(r.rounded())) %." }
+        return PlannedNotification(id: "sleep-update-\(d.date)-\(s.end)", kind: .sleep, title: "Nuit mise à jour",
                                    body: body, route: "sleep:\(d.date)", thread: "morning")
     }
 

@@ -6,9 +6,9 @@ la récupération et l'effort, avec une interface calquée sur l'app WHOOP.
 
 Aucun compte, aucun cloud : tout reste sur ton téléphone.
 
-## Télécharger l'IPA — version 1.2.0
+## Télécharger l'IPA — version 1.2.1
 
-**➜ https://github.com/ramphortpl/woop/releases/download/v1.2.0/Woop.ipa**
+**➜ https://github.com/ramphortpl/woop/releases/download/v1.2.1/Woop.ipa**
 
 Toutes les versions : [page des releases](https://github.com/ramphortpl/woop/releases).
 Chaque modification du code reconstruit aussi l'application (GitHub Actions, macOS) ; la toute
@@ -17,6 +17,24 @@ https://github.com/ramphortpl/woop/releases/download/ipa-latest/Woop.ipa
 
 L'IPA n'est pas signée : ouvre le lien depuis ton iPhone ou colle-le dans ton signer
 (ESign, Feather, Scarlet, Sideloadly, AltStore…), signe-la puis installe-la.
+
+## Nouveautés de la 1.2.1 — un réveil dans la nuit ne coupe plus ton sommeil
+
+Quand tu te réveilles la nuit puis que tu te rendors, c'est **la même nuit** : le rendormissement
+n'est plus jamais rangé en « sieste », et le temps éveillé compte comme éveil dans la nuit.
+
+- **Réveil long** — jusqu'à 3 h (5 h pour une insomnie en pleine nuit), les deux parties de la nuit
+  sont réunies. Les deux projets de référence s'arrêtent à 90 min : au-delà, la partie la plus
+  courte devenait une sieste, même à 23 h.
+- **Rendormissement court** — moins d'une heure, plusieurs fois de suite ou juste avant de te lever :
+  rattaché à la nuit au lieu d'être perdu ou compté comme sieste.
+- **Tes horaires à toi** — Woop apprend ta nuit habituelle sur tes dernières nuits : si tu te couches
+  à 3 h et te lèves vers 10 h, te rendormir à 11 h reste ta nuit.
+- **Une sieste reste une sieste** — sommeil de l'après-midi, somnolence du soir sur le canapé, ou
+  sommeil après t'être levé et avoir bougé (plus de 1 000 pas ou une séance de sport entre les deux).
+- **Phases** analysées sur la nuit entière, **effort et calories** comptés pendant les éveils,
+  **notification du matin** qui attend que tu sois vraiment levé (et « Nuit mise à jour » si tu te
+  rendors après), bouton **C'est la suite de ma nuit · rattacher** sur les siestes proches de la nuit.
 
 ## Nouveautés de la 1.2 — des chiffres plus justes
 
@@ -166,6 +184,7 @@ Woop combine les deux projets demandés, en prenant pour chaque brique la métho
 | Intervalles R-R en millisecondes sur WHOOP 5 | démontré sur 71 000 trames | **noop** |
 | Détection des nuits | immobilité (gravité) + FC, gardes de jour / matin / hors poignet, raccord des fragments | **noop** `SleepStager`, repris par OpenStrap |
 | Regroupement en une nuit, nuit principale, coupe de la grasse matinée, secondes non observées, siestes | groupes < 60–90 min, mi-sommeil habituel, état du bracelet en confirmation seulement | **OpenStrap** `segmentSleep`, `band_offset`, `nap` |
+| Réveils longs et rendormissements courts dans la même nuit | fenêtre de nuit apprise sur tes horaires, éveil jusqu'à 3 h (5 h en pleine nuit), pas et effort pendant l'éveil, preuve de sommeil pour les morceaux courts | **Woop** (au-delà des deux projets, qui s'arrêtent à 90 min) |
 | Phases (léger / profond / paradoxal / éveil) | HMM + Viterbi, validé sur 44 personnes avec polysomnographie (κ 0,36) | **noop** `SleepStagerV2` |
 | VFC | séries contiguës de battements propres, médiane des fenêtres de 5 min | **OpenStrap** `hrv_time` + **noop** `HRVAnalyzer` |
 | FC au repos | plus basse demi-heure de la nuit | **OpenStrap** `nocturnal` |

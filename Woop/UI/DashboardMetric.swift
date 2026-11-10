@@ -202,7 +202,7 @@ extension DashboardMetric {
         case .sleepConsistency: return "Régularité de tes heures de coucher et de lever sur les 4 dernières nuits : la probabilité d'être dans le même état (endormi ou éveillé) à la même heure d'un jour sur l'autre. Optimal à partir de 80 %."
         case .sleepEfficiency: return "Part du temps passé au lit pendant laquelle tu dormais. Optimal à partir de 90 %."
         case .restorativeHours, .restorativePct: return "Sommeil réparateur : sommeil profond (SOL, ondes lentes) et sommeil paradoxal (SP). C'est là que le corps et le cerveau récupèrent le plus."
-        case .timeInBed: return "De l'endormissement au réveil final, éveils compris."
+        case .timeInBed: return "De l'endormissement au réveil final, éveils compris. Un réveil en pleine nuit suivi d'un rendormissement reste la même nuit."
         case .sleepDebt: return "Part du sommeil manqué la nuit précédente (environ la moitié) reportée sur ton besoin de cette nuit. Elle s'efface dès que tu dors ton besoin complet."
         case .sleepNeeded: return "Ton besoin de sommeil pour la nuit à venir : besoin de base, dette, effort de la journée et siestes."
         case .recovery: return "La récupération compare ta VFC, ta fréquence cardiaque au repos, ta respiration et ton sommeil à tes propres moyennes. Vert : prêt pour un effort important ; jaune : effort modéré ; rouge : repos."

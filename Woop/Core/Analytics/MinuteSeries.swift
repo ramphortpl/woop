@@ -18,6 +18,8 @@ struct MinuteSeries {
     var bandUp: [Int]
     var present: [Int]
     var stepInc: [Int]
+    /// Seconds of the minute that carry the strap's step counter (none on the live stream).
+    var stepN: [Int]
     var skinSum: [Double]
     var skinN: [Int]
 
@@ -35,6 +37,7 @@ struct MinuteSeries {
         bandUp = Array(repeating: 0, count: count)
         present = Array(repeating: 0, count: count)
         stepInc = Array(repeating: 0, count: count)
+        stepN = Array(repeating: 0, count: count)
         skinSum = Array(repeating: 0, count: count)
         skinN = Array(repeating: 0, count: count)
     }
@@ -60,6 +63,7 @@ struct MinuteSeries {
             default: break
             }
             if !s.skinTemp.isNaN { m.skinSum[i] += Double(s.skinTemp); m.skinN[i] += 1 }
+            if s.stepCounter >= 0 { m.stepN[i] += 1 }
             if let p = prev {
                 if s.ts - p.ts == 1, s.hasGravity, p.hasGravity {
                     let dx = Double(s.gx - p.gx), dy = Double(s.gy - p.gy), dz = Double(s.gz - p.gz)

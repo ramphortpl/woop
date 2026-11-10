@@ -88,6 +88,60 @@ final class NotificationTests: XCTestCase {
         XCTAssertTrue(NotificationPlanner.plan(c, log: &log).isEmpty, "once a day")
     }
 
+    /// Awake at 03:00 is not the morning: the night is not announced after 20 minutes — the
+    /// wearer may go back to sleep — unless they are clearly up and about.
+    func testNightAwakeningIsNotAnnouncedAsTheMorning() {
+        var d = day(today)
+        d.sleep = SleepSession(start: t0 - 3600, end: t0 + 3 * 3600, lightSec: 7200, deepSec: 3600, remSec: 2400)
+        d.recovery = 38
+        d.sleepPerformance = 44
+        d.steps = 60
+        var log = initializedLog()
+        var c = NotifyContext(days: [today: d], today: today, now: t0 + 3 * 3600 + 1800, dataEnd: t0 + 3 * 3600 + 1500)
+        XCTAssertTrue(NotificationPlanner.plan(c, log: &log).isEmpty, "25 minutes awake at 03:00: wait")
+        // Up for good (a thousand steps): the night is over.
+        var up = d
+        up.steps = 1400
+        var logUp = initializedLog()
+        c.days = [today: up]
+        XCTAssertEqual(NotificationPlanner.plan(c, log: &logUp).map(\.kind), [.recovery])
+        // Still quiet 95 minutes later: announced as it stands.
+        c.days = [today: d]
+        c.now = t0 + 3 * 3600 + 96 * 60
+        c.dataEnd = t0 + 3 * 3600 + 95 * 60
+        XCTAssertEqual(NotificationPlanner.plan(c, log: &log).map(\.kind), [.recovery])
+        XCTAssertEqual(log.sleepEndNotified, t0 + 3 * 3600)
+    }
+
+    /// The night was announced, then the wearer went back to sleep: the same night, longer, is
+    /// announced once more (and only once).
+    func testExtendedNightIsAnnouncedAgain() {
+        var d = day(today)
+        d.sleep = SleepSession(start: t0 - 3600, end: t0 + 3 * 3600, lightSec: 7200, deepSec: 3600, remSec: 2400)
+        d.recovery = 38
+        d.sleepPerformance = 44
+        var log = initializedLog()
+        var c = NotifyContext(days: [today: d], today: today, now: t0 + 5 * 3600, dataEnd: t0 + 5 * 3600 - 60)
+        XCTAssertEqual(NotificationPlanner.plan(c, log: &log).map(\.kind), [.recovery])
+        // Back to sleep 05:00 → 07:30; the rescored night now runs to 07:30.
+        d.sleep = SleepSession(start: t0 - 3600, end: t0 + 7 * 3600 + 1800, awakeSec: 7200, lightSec: 12600, deepSec: 5400, remSec: 5400)
+        d.recovery = 61
+        d.sleepPerformance = 82
+        c.days = [today: d]
+        c.now = t0 + 8 * 3600
+        c.dataEnd = t0 + 8 * 3600 - 60
+        let n = NotificationPlanner.plan(c, log: &log)
+        XCTAssertEqual(n.count, 1)
+        XCTAssertEqual(n.first?.title, "Nuit mise à jour")
+        XCTAssertTrue(n.first?.body.contains("Retour au sommeil pris en compte") ?? false)
+        XCTAssertTrue(n.first?.body.contains("Récupération : 61 %") ?? false)
+        XCTAssertTrue(NotificationPlanner.plan(c, log: &log).isEmpty, "once")
+        // A rescoring that moves the end by a few minutes says nothing.
+        d.sleep?.end += 300
+        c.days = [today: d]
+        XCTAssertTrue(NotificationPlanner.plan(c, log: &log).isEmpty)
+    }
+
     func testSleepWhileCalibratingAndHealthMonitor() {
         var hist: [String: DayMetrics] = [:]
         for i in 1...10 {

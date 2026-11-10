@@ -16,6 +16,8 @@ final class SleepScenarioTests: XCTestCase {
         var hrShift: Double = 0
         /// WHOOP 4.0-like data: no strap envelope at all.
         var noBand = false
+        /// Steps per minute walked during the block (the strap's on-chip counter).
+        var steps: Double = 0
     }
 
     /// Build a recording from blocks. `day0` = local midnight the hours are counted from.
@@ -25,6 +27,7 @@ final class SleepScenarioTests: XCTestCase {
         var posture = (0.1, 0.2, 0.97)
         var beatPhase = 0.0
         var slow = 0.0
+        var walked = 0.0
         for b in blocks.sorted(by: { $0.from < $1.from }) {
             let a = day0 + Int(b.from * 3600), e = day0 + Int(b.to * 3600)
             if b.kind == .missing { continue }
@@ -85,7 +88,8 @@ final class SleepScenarioTests: XCTestCase {
                     s.gz = Float(posture.2 + rng.gauss() * still)
                     s.sleepState = b.noBand ? -1 : (b.band ?? band)
                     s.skinTemp = 33
-                    s.stepCounter = 100
+                    walked += b.steps / 60
+                    s.stepCounter = Int32((100 + Int(walked)) & 0xFFFF)
                 }
                 out.append(s)
                 t += 1
