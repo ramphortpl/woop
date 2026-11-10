@@ -237,6 +237,32 @@ final class NightAwakeningTests: XCTestCase {
         XCTAssertTrue(morning.naps.isEmpty)
     }
 
+    /// Asleep 40 minutes, awake, phone in hand at 03:20: that first sleep is not shown as a
+    /// "nap at 02:30" — the night is simply not over. Once the rest has arrived it is its start.
+    func testAShortFirstSleepIsNotShownAsANapWhileTheNightGoesOn() {
+        let blocks = [
+            Block(from: -8, to: 2.5, kind: .active, steps: 5),
+            Block(from: 2.5, to: 3.17, kind: .sleep),
+            Block(from: 3.17, to: 3.85, kind: .active, steps: 1),
+            Block(from: 3.85, to: 9.0, kind: .sleep),
+            Block(from: 9.0, to: 23, kind: .active, steps: 8),
+        ]
+        let rec = SleepScenarioTests.record(day0: day0, blocks)
+        func at(_ hour: Double) -> DayMetrics {
+            let now = day0 + Int(hour * 3600)
+            return DayEngine.compute(DayInputs(date: date, samples: rec.filter { $0.ts < now }, profile: UserProfile(),
+                                               history: [], now: now))
+        }
+        let early = at(3.5)
+        show("first-sleep@03:30", early)
+        XCTAssertTrue(early.naps.isEmpty, "not a nap: the night may go on")
+        let full = at(12)
+        show("first-sleep@12:00", full)
+        XCTAssertEqual(hours(full.sleep!.start), 2.5, accuracy: 0.3)
+        XCTAssertEqual(hours(full.sleep!.end), 9.0, accuracy: 0.25)
+        XCTAssertTrue(full.naps.isEmpty)
+    }
+
     /// "C'est la suite de ma nuit": a nap put back into the night by hand keeps the time
     /// between the two as time awake.
     func testANapAttachedByHandBecomesPartOfTheNight() {
@@ -258,6 +284,26 @@ final class NightAwakeningTests: XCTestCase {
         XCTAssertEqual(hours(merged.sleep!.end), 10.5, accuracy: 0.25)
         XCTAssertGreaterThan(merged.sleep!.awakeSec, 120 * 60)
         XCTAssertGreaterThan(merged.sleep!.asleepSec, auto.sleep!.asleepSec + 35 * 60)
+    }
+
+    /// The other way round: the wearer cuts the night short by hand ("my night ended at 02:30").
+    /// The part left outside is not lost: it stays, as a sleep of its own.
+    func testANightCutShortByHandKeepsItsOtherHalf() {
+        let blocks = [
+            Block(from: -10, to: -0.5, kind: .active),
+            Block(from: -0.5, to: 2.5, kind: .sleep),
+            Block(from: 2.5, to: 4.5, kind: .active, steps: 2),
+            Block(from: 4.5, to: 8.0, kind: .sleep),
+            Block(from: 8.0, to: 23, kind: .active, steps: 8),
+        ]
+        let rec = SleepScenarioTests.record(day0: day0, blocks)
+        var inputs = DayInputs(date: date, samples: rec, profile: UserProfile(), history: [], now: day0 + 36 * 3600)
+        inputs.forcedSleep = (day0 - 1800, day0 + Int(2.5 * 3600))
+        let d = DayEngine.compute(inputs)
+        show("cut-by-hand", d)
+        XCTAssertEqual(hours(d.sleep!.end), 2.5, accuracy: 0.05)
+        XCTAssertEqual(d.naps.count, 1)
+        XCTAssertEqual(hours(d.naps[0].start), 4.5, accuracy: 0.25)
     }
 
     // MARK: Sleeps that are NOT the night
@@ -365,6 +411,43 @@ final class NightAwakeningTests: XCTestCase {
         show("afternoon", d)
         XCTAssertEqual(hours(d.sleep!.end), 6.0, accuracy: 0.25)
         XCTAssertEqual(d.naps.count, 1)
+    }
+
+    /// Two days in a row: broken nights, an afternoon nap, an evening doze — each sleep lands
+    /// on its own day, with the right label.
+    func testTwoDaysOfBrokenNightsAndNaps() {
+        let blocks = [
+            Block(from: -34, to: -24.5, kind: .active, steps: 8),
+            Block(from: -24.5, to: -21, kind: .sleep),            // 23:30 → 03:00
+            Block(from: -21, to: -19.83, kind: .active, steps: 1), // 70 min awake
+            Block(from: -19.83, to: -17, kind: .sleep),           // 04:10 → 07:00
+            Block(from: -17, to: -10.5, kind: .active, steps: 12),
+            Block(from: -10.5, to: -9.5, kind: .sleep),           // nap 13:30 → 14:30
+            Block(from: -9.5, to: -3.5, kind: .active, steps: 12),
+            Block(from: -3.5, to: -3.0, kind: .sleep),            // doze 20:30 → 21:00
+            Block(from: -3.0, to: -0.75, kind: .active, steps: 6),
+            Block(from: -0.75, to: 1.5, kind: .sleep),            // 23:15 → 01:30
+            Block(from: 1.5, to: 3.17, kind: .active, steps: 2),  // 100 min awake
+            Block(from: 3.17, to: 5.5, kind: .sleep),             // 03:10 → 05:30
+            Block(from: 5.5, to: 6.08, kind: .active, steps: 1),  // 35 min awake
+            Block(from: 6.08, to: 7.5, kind: .sleep),             // 06:05 → 07:30
+            Block(from: 7.5, to: 23, kind: .active, steps: 10),
+        ]
+        let eve = DayKey.adding(-1, to: date)
+        let first = compute(blocks, date: eve, nowHour: 60)
+        show("day-1", first)
+        XCTAssertEqual(hours(first.sleep!.start), -24.5, accuracy: 0.25)
+        XCTAssertEqual(hours(first.sleep!.end), -17, accuracy: 0.25)
+        XCTAssertGreaterThan(first.sleep!.awakeSec, 60 * 60)
+        XCTAssertEqual(first.naps.count, 2)
+        XCTAssertEqual(hours(first.naps[0].start), -10.5, accuracy: 0.3)
+        XCTAssertEqual(hours(first.naps[1].start), -3.5, accuracy: 0.3)
+        let second = compute(blocks, history: [first])
+        show("day-2", second)
+        XCTAssertEqual(hours(second.sleep!.start), -0.75, accuracy: 0.25)
+        XCTAssertEqual(hours(second.sleep!.end), 7.5, accuracy: 0.25)
+        XCTAssertGreaterThan(second.sleep!.awakeSec, 125 * 60)
+        XCTAssertTrue(second.naps.isEmpty)
     }
 
     // MARK: The usual night

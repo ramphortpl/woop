@@ -101,11 +101,27 @@ enum DayEngine {
         var forced = false
         if let f = inp.forcedSleep, f.end > f.start, f.end - f.start <= 20 * 3600 {
             // The wearer's own times: stage that window as it is and drop whatever was detected
-            // inside it.
+            // inside it. The runs of a detected night that lie wholly outside the window stay,
+            // as sleeps of their own (a night cut short by hand keeps its other half as a nap).
             let run = SleepRun(start: f.start, end: f.end)
+            var kept: [NightGroup] = []
+            var loose: [SleepRun] = []
+            for g in groups {
+                if g.start < f.end && f.start < g.end {
+                    loose.append(contentsOf: g.runs.filter { $0.end <= f.start || $0.start >= f.end })
+                } else {
+                    kept.append(g)
+                }
+            }
+            var freed = SleepSpine.groupNights(loose, context)
+            for gi in freed.indices {
+                let asleep = freed[gi].runs.reduce(0) { sum, r in
+                    sum + (stagedRuns[r.start] ?? []).reduce(0) { $0 + ($1.stage == .wake ? 0 : $1.duration) }
+                }
+                freed[gi].asleepMin = Double(asleep) / 60
+            }
             stagedRuns[f.start] = SleepStager.stage(samples: samples, start: f.start, end: f.end, priors: cal?.stageShares)
-            groups.removeAll { $0.start < f.end && f.start < $0.end }
-            groups.append(NightGroup(runs: [run]))
+            groups = kept + freed + [NightGroup(runs: [run])]
             groups.sort { $0.start < $1.start }
             mainIdx = groups.firstIndex { $0.start == f.start }
             forced = true
@@ -155,6 +171,12 @@ enum DayEngine {
         for gi in todayIdx where gi != mainIdx {
             let g = groups[gi]
             guard g.asleepMin >= 15, g.end - g.start <= 6 * 3600 else { continue }
+            // A sleep that has just ended inside the wearer's night may be that night going on
+            // (they can still fall back asleep, and it will then be attached): not a nap yet,
+            // unless they have clearly got up since.
+            if !forced, inp.now - g.end < SleepSpine.nightInsomniaMaxMin * 60,
+               context.habit.contains(g.end, lead: SleepSpine.nightWindowLeadS, lag: 0, tz: tz),
+               context.activity(g.end, min(inp.now, to)) != .upAndAbout { continue }
             naps.append(buildSession(g, staged: stagedRuns, window: window, series: series, nap: true))
         }
         naps.sort { $0.start < $1.start }
