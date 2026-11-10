@@ -470,6 +470,64 @@ final class NightAwakeningTests: XCTestCase {
         XCTAssertTrue(second.naps.isEmpty)
     }
 
+    /// Random broken nights (2–5 pieces of sleep, awakenings of 5 min to 3 h 20, a nap some
+    /// days): whatever the engine decides, the result must hang together.
+    func testRandomBrokenNightsStayCoherent() {
+        var rng = AnalyticsTests.Rng(state: 2026)
+        for trial in 0..<8 {
+            var blocks: [Block] = []
+            var t = -1.5 + rng.next() * 4.5            // first onset between 22:30 and 03:00
+            blocks.append(Block(from: -10, to: t, kind: .active, steps: 6))
+            let pieces = 2 + Int(rng.next() * 4)
+            var slept = 0.0
+            for k in 0..<pieces {
+                let dur = (20 + rng.next() * 220) / 60
+                blocks.append(Block(from: t, to: t + dur, kind: .sleep))
+                slept += dur
+                t += dur
+                guard k < pieces - 1 else { break }
+                let gap = (5 + rng.next() * rng.next() * 195) / 60
+                blocks.append(Block(from: t, to: t + gap, kind: rng.next() < 0.5 ? .active : .upAtNight,
+                                    steps: rng.next() < 0.25 ? 40 : 2))
+                t += gap
+            }
+            let nightEnd = t
+            if rng.next() < 0.5, nightEnd < 12.5 {
+                blocks.append(Block(from: nightEnd, to: 14, kind: .active, steps: 12))
+                blocks.append(Block(from: 14, to: 15.2, kind: .sleep))
+                blocks.append(Block(from: 15.2, to: 23.5, kind: .active, steps: 8))
+            } else {
+                blocks.append(Block(from: nightEnd, to: 23.5, kind: .active, steps: 10))
+            }
+            let rec = SleepScenarioTests.record(day0: day0, blocks, seed: UInt64(100 + trial))
+            let d = DayEngine.compute(DayInputs(date: date, samples: rec, profile: UserProfile(), history: [],
+                                                now: day0 + 36 * 3600))
+            show("random-\(trial)", d)
+            guard let s = d.sleep else { XCTFail("trial \(trial): no night found"); continue }
+            XCTAssertLessThanOrEqual(s.asleepSec + s.awakeSec, s.inBedSec + 60, "trial \(trial)")
+            XCTAssertGreaterThan(s.asleepSec, 0, "trial \(trial)")
+            // Stages are ordered, inside the night, and never overlap.
+            var cursor = s.start
+            for seg in s.stages {
+                XCTAssertGreaterThanOrEqual(seg.start, cursor, "trial \(trial)")
+                XCTAssertLessThanOrEqual(seg.end, s.end, "trial \(trial)")
+                cursor = seg.end
+            }
+            // A nap never overlaps the night, nor another nap, and ends on this day.
+            var spans = [(s.start, s.end)]
+            for n in d.naps {
+                for sp in spans { XCTAssertFalse(n.start < sp.1 && sp.0 < n.end, "trial \(trial): overlapping sleeps") }
+                spans.append((n.start, n.end))
+                XCTAssertGreaterThan(n.end, day0, "trial \(trial)")
+                XCTAssertLessThanOrEqual(n.end, day0 + 86400, "trial \(trial)")
+            }
+            // Nothing is lost: the sleeps of the day account for most of what was really slept
+            // (the pieces under 15 minutes of an awakening can go either way).
+            let total = Double(s.asleepSec + d.naps.reduce(0) { $0 + $1.asleepSec }) / 3600
+            XCTAssertGreaterThan(total, slept * 0.6, "trial \(trial): slept \(slept) h, found \(total) h")
+        }
+    }
+
     // MARK: The usual night
 
     func testNightHabitIsLearnedAcrossMidnight() {
