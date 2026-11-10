@@ -213,6 +213,11 @@ Construire soi-même (Mac) : `brew install xcodegen && xcodegen generate && open
   sont proches, **pas garanties identiques**. Les durées de chaque phase de sommeil restent la partie la
   moins sûre (aucune montre ne les mesure vraiment ; WHOOP lui-même n'atteint que κ ≈ 0,37 face à la
   polysomnographie). Woop **n'est pas un dispositif médical**.
+- Réveils nocturnes : un réveil pendant lequel tu bouges (te lever, téléphone, te retourner) est vu
+  comme de l'éveil ; rester éveillé **parfaitement immobile** peut encore être compté comme du sommeil
+  léger (limite commune à tous les bracelets). Un rendormissement est rattaché à ta nuit jusqu'à 3 h
+  d'éveil (5 h en pleine nuit) ; au-delà, ou si tu t'es levé et as bougé entre les deux, c'est une
+  sieste — le bouton *C'est la suite de ma nuit* la rattache en un geste.
 - Ce que le bracelet n'a pas livré ne peut pas être noté : si l'app WHOOP officielle vide l'historique
   pendant que Woop est fermé, ces heures manquent (carte *Qualité des données*).
 - L'oxygène sanguin est une estimation non calibrée issue du bracelet.
