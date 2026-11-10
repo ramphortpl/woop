@@ -214,4 +214,40 @@ final class CalibrationTests: XCTestCase {
         for d in history { print(" demo \(d.date) sleep=\(d.sleep.map { "\($0.asleepSec / 60)m eff=\(Int($0.efficiency * 100))" } ?? "-") rec=\(d.recovery ?? -1) strain=\(d.strain ?? -1) naps=\(d.naps.count) acts=\(d.activities.map { "\($0.sport):\($0.strain ?? -1)" })") }
         XCTAssertNotNil(lastDay.strain)
     }
+    /// The calibration reaches every figure it is meant to: vitals aligned on WHOOP, the personal
+    /// recovery model, the strain scale, the sleep-score weights — and the raw values stay raw.
+    func testCalibrationFlowsThroughTheEngine() {
+        let start = "2026-10-01"
+        let samples = AnalyticsTests.makeSamples(days: 6, startKey: start, hrvScale: [1])
+        let now = DayKey.startUnix(DayKey.adding(6, to: start))! + 6 * 3600
+        var cal = Calibration()
+        cal.whoopNights = 100
+        cal.hrvScale = 0.8
+        cal.rhrOffset = 3
+        cal.strainDenominator = 3000
+        cal.perfWeights = SleepCoach.PerformanceWeights(hours: 1, consistency: 0, efficiency: 0, stress: 0.1, intercept: -10)
+        cal.recovery = Calibration.RecoveryModel(intercept: 0.2, wLnHRV: 1.5, wRHR: -0.4, wResp: 0, wSleep: 0.8)
+        cal.need = Calibration.NeedModel(baseSec: 8 * 3600, strainLinear: 0, strainQuadratic: 0)
+        func run(_ c: Calibration?) -> [DayMetrics] {
+            var history: [DayMetrics] = []
+            for d in 0..<6 {
+                let key = DayKey.adding(d, to: start)
+                history.append(DayEngine.compute(DayInputs(date: key, samples: samples, profile: UserProfile(),
+                                                           history: history, now: now, calibration: c)))
+            }
+            return history
+        }
+        let plain = run(nil), tuned = run(cal)
+        let a = plain[4], b = tuned[4]
+        XCTAssertEqual(a.hrv!, a.hrvRaw!.rounded(), accuracy: 0.001)       // nothing to align without calibration
+        XCTAssertEqual(b.hrvRaw!, a.hrvRaw!, accuracy: 0.001)             // raw values do not depend on it
+        XCTAssertEqual(b.hrv!, (a.hrvRaw! * 0.8).rounded(), accuracy: 0.5)
+        XCTAssertEqual(b.rhr!, (a.rhrRaw! + 3).rounded(), accuracy: 0.5)
+        XCTAssertGreaterThan(b.strain!, a.strain!)                         // a steeper personal scale
+        XCTAssertEqual(b.sleepPerformance!, b.sleepHoursVsNeed!.rounded(), accuracy: 0.6) // hours-only weights
+        XCTAssertEqual(b.sleepNeedSec! - (b.sleepDebtSec ?? 0), 8 * 3600, accuracy: 1)
+        XCTAssertEqual(b.recoveryCalibrated, true)
+        XCTAssertNil(a.recoveryCalibrated)
+        XCTAssertNotNil(b.recovery)
+    }
 }
