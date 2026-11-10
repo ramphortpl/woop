@@ -12,7 +12,7 @@ struct WhoopImportView: View {
     var body: some View {
         DetailScaffold(title: "Importer depuis WHOOP") {
             CardBox(title: "Pourquoi importer ?") {
-                Text("Tes jours passés affichent exactement les scores WHOOP (récupération, effort, sommeil, entraînements) et tes moyennes de référence sont calibrées tout de suite, sans attendre 4 nuits.")
+                Text("Tes jours passés affichent exactement les scores WHOOP (récupération, effort, sommeil, entraînements). Et surtout, Woop apprend sur TES nuits WHOOP comment WHOOP calcule ta récupération, ton besoin de sommeil, ton effort et tes calories : les jours suivants, mesurés par le bracelet, sont notés avec ces mêmes réglages.")
                     .font(WFont.text(13)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let first = app.importedDays.keys.min(), let last = app.importedDays.keys.max() {
@@ -20,6 +20,10 @@ struct WhoopImportView: View {
                           systemImage: "checkmark.circle.fill")
                         .font(WFont.text(12, weight: .semibold)).foregroundColor(Theme.recoveryGreen)
                 }
+            }
+
+            if let cal = app.calibration, !cal.isEmpty {
+                CalibrationCard(cal: cal)
             }
 
             CardBox(title: "1 · Demande ton export") {
@@ -179,6 +183,86 @@ struct DocumentPicker: UIViewControllerRepresentable {
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             parent.onCancel()
+        }
+    }
+}
+
+
+/// What Woop learned from the wearer's WHOOP export ("Calibrage sur tes données WHOOP").
+struct CalibrationCard: View {
+    var cal: Calibration
+
+    var body: some View {
+        CardBox(title: "Calibrage sur tes données WHOOP") {
+            Text(intro)
+                .font(WFont.text(12)).foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            line("Récupération", on: cal.recovery != nil, detail: fit(cal.recoveryFit, unit: "pts", needs: "30 nuits avec VFC et récupération"))
+            line("Score de sommeil", on: cal.perfWeights != nil, detail: fit(cal.perfFit, unit: "pts", needs: "21 nuits récentes"))
+            line("Besoin de sommeil", on: cal.need != nil,
+                 detail: needDetail)
+            line("Dette de sommeil", on: cal.debtCarry != nil,
+                 detail: cal.debtCarry.map { pct($0) + " du manque reporté" } ?? "valeur par défaut (55 %)")
+            line("Régularité du sommeil", on: cal.consistency != nil, detail: fit(cal.consistencyFit, unit: "pts", needs: "21 nuits"))
+            line("Échelle d'effort", on: cal.strainDenominator != nil, detail: fit(cal.strainFit, unit: "pt", needs: "8 entraînements d'effort ≥ 8"))
+            line("Calories", on: cal.kcalActiveScale != nil,
+                 detail: cal.kcalActiveScale.map { "×" + dec($0, 2) + " sur \(cal.kcalWorkouts) entraînements" }
+                    ?? "il faut 8 entraînements avec FC et calories")
+            line("Phases de sommeil", on: cal.stageShares != nil,
+                 detail: cal.stageShares.map { stagesDetail($0) } ?? "il faut 7 nuits avec les phases")
+            line("VFC et FC au repos", on: cal.hrvScale != nil || cal.rhrOffset != nil,
+                 detail: overlapDetail)
+        }
+    }
+
+    private var intro: String {
+        var t = "\(cal.whoopNights) nuits WHOOP analysées"
+        if cal.overlapNights > 0 { t += " · \(cal.overlapNights) nuits mesurées à la fois par WHOOP et par Woop" }
+        return t + ". Chaque réglage n'est appliqué que s'il prédit mieux tes chiffres WHOOP que le réglage par défaut."
+    }
+
+    private var overlapDetail: String {
+        var parts: [String] = []
+        if let k = cal.hrvScale { parts.append("VFC ×" + dec(k, 2)) }
+        if let o = cal.rhrOffset { parts.append("FC repos " + (o >= 0 ? "+" : "−") + dec(abs(o), 1)) }
+        if !parts.isEmpty { return parts.joined(separator: " · ") + " (alignés sur WHOOP)" }
+        return "il faut 5 nuits mesurées à la fois par WHOOP et par Woop : réimporte un export plus tard"
+    }
+
+    private func pct(_ v: Double) -> String { "\(Int((v * 100).rounded())) %" }
+
+    private func dec(_ v: Double, _ digits: Int) -> String {
+        String(format: "%.\(digits)f", v).replacingOccurrences(of: ".", with: ",")
+    }
+
+    private var needDetail: String {
+        guard let n = cal.need else { return fit(cal.needFit, unit: "min", needs: "14 nuits consécutives") }
+        var t = "base " + Fmt.hm(n.baseSec)
+        if let f = cal.needFit { t += " · écart moyen \(Int(f.mae.rounded())) min" }
+        return t
+    }
+
+    private func stagesDetail(_ s: Calibration.StageShares) -> String {
+        "léger " + pct(s.light) + " · profond " + pct(s.deep) + " · paradoxal " + pct(s.rem) + " · éveil " + pct(s.awake)
+    }
+
+    private func fit(_ f: Calibration.Fit?, unit: String, needs: String) -> String {
+        guard let f else { return "il faut \(needs)" }
+        var out = "écart moyen " + dec(f.mae, 1) + " \(unit) sur \(f.n)"
+        if let d = f.defaultMAE { out += " (défaut : " + dec(d, 1) + ")" }
+        return out
+    }
+
+    private func line(_ title: String, on: Bool, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.system(size: 15)).foregroundColor(on ? Theme.recoveryGreen : Theme.textMuted).frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(WFont.text(14, weight: .semibold)).foregroundColor(.white)
+                Text(on ? detail : "non appliqué — " + detail).font(WFont.text(11.5)).foregroundColor(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 }

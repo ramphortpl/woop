@@ -87,7 +87,8 @@ struct ActivityDetailView: View {
 
                 CardBox(title: "Fréquence cardiaque") {
                     if points.count >= 2 {
-                        ActivityHRChart(points: points, start: a.start, end: a.end, maxHR: maxHR)
+                        ActivityHRChart(points: points, start: a.start, end: a.end, maxHR: maxHR,
+                                        restHR: d.restingHRUsed ?? d.rhr ?? 60)
                     } else {
                         Text(points.isEmpty ? "Pas de fréquence cardiaque enregistrée pendant cette activité." : "")
                             .font(WFont.text(13.5)).foregroundColor(Theme.textSecondary)

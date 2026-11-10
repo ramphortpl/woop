@@ -16,6 +16,7 @@ struct SleepDetailView: View {
     @State private var points: [HRPoint] = []
     @State private var stress: Double?
     @State private var editing = false
+    @State private var editingTimes = false
     @State private var info: InfoItem?
 
     var body: some View {
@@ -58,18 +59,38 @@ struct SleepDetailView: View {
                     StatTile(title: "FC moyenne", value: Fmt.int(s.avgHR), unit: "bpm"),
                 ])
                 .padding(.top, 14)
+                if let u = s.unobservedSec, u >= 600 {
+                    Text("\(u / 60) min de cette nuit n'ont pas été reçues du bracelet : elles ne comptent ni comme sommeil ni comme éveil.")
+                        .font(WFont.text(11.5)).foregroundColor(Theme.alarmOrange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 14).padding(.horizontal, 4)
+                }
                 Text(s.bandDetected
                      ? "Les phases de sommeil sont estimées à partir de la fréquence cardiaque, de sa variabilité, de la respiration et des mouvements. Ce n'est pas une polysomnographie."
-                     : "Nuit détectée à partir des mouvements et de la fréquence cardiaque (l'état de sommeil du bracelet n'était pas disponible).")
+                     : "Nuit retrouvée à partir de la fréquence cardiaque seule (pas de mesure de mouvement pour ces heures) : moins précise.")
                     .font(WFont.text(11.5)).foregroundColor(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16).padding(.horizontal, 4)
+                if !d.imported && !app.settings.demoMode {
+                    OutlineButton(title: app.settings.sleepEdits[date] == nil ? "Corriger les heures de sommeil" : "Heures corrigées · modifier") {
+                        editingTimes = true
+                    }
+                    .padding(.top, 18)
+                }
             } else {
                 CardBox {
                     Text("Aucun sommeil détecté pour cette journée. Porte ton bracelet la nuit et synchronise-le le matin.")
                         .font(WFont.text(15)).foregroundColor(Theme.textSecondary)
                 }
                 .padding(.top, 20)
+                if !app.settings.demoMode && d.wornMinutes > 0 {
+                    OutlineButton(title: "Indiquer mes heures de sommeil") { editingTimes = true }
+                        .padding(.top, 16)
+                }
             }
+        }
+        .sheet(isPresented: $editingTimes) {
+            SleepTimesEditor(date: date, sleep: d.sleep).environmentObject(app)
         }
         .task(id: "\(d.sleep?.start ?? 0)-\(d.sleep?.end ?? 0)-\(app.dataVersion)") { await load(d) }
         .sheet(isPresented: $editing) {
@@ -101,8 +122,10 @@ struct SleepDetailView: View {
 
     private func breakdown(_ d: DayMetrics, _ s: SleepSession) -> some View {
         let need = d.sleepNeedSec ?? 0
-        let hoursPct: Double? = need > 0 ? min(100, Double(s.asleepSec) / need * 100) : nil
+        let hoursPct: Double? = d.sleepHoursVsNeed ?? (need > 0 ? min(100, Double(s.asleepSec) / need * 100) : nil)
         let efficiency = s.efficiency * 100
+        // The engine's own figure (the one inside the sleep score) wins over the on-screen estimate.
+        let stress = s.highStressPct ?? self.stress
         return PointerCard {
             BreakdownRow(icon: "moon.circle", title: "Heures par rapport aux besoins", value: Fmt.pct(hoursPct),
                          state: .higher(hoursPct, sufficient: 70, optimal: 85))
@@ -582,5 +605,75 @@ struct MetricListEditor: View {
         )
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 22))
+    }
+}
+
+
+/// Manual correction of the night's start and end, as in WHOOP's "Modifier le sommeil".
+struct SleepTimesEditor: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    var date: String
+    var sleep: SleepSession?
+    @State private var start = Date()
+    @State private var end = Date()
+
+    private var valid: Bool {
+        let d = end.timeIntervalSince(start)
+        return d >= 20 * 60 && d <= 20 * 3600
+    }
+
+    var body: some View {
+        ZStack {
+            ScreenBackground()
+            VStack(spacing: 16) {
+                SheetHeader(title: "Heures de sommeil") { dismiss() }
+                VStack(alignment: .leading, spacing: 14) {
+                    DatePicker("Endormissement", selection: $start, displayedComponents: [.date, .hourAndMinute])
+                    Rectangle().fill(Theme.separator).frame(height: 1)
+                    DatePicker("Réveil", selection: $end, displayedComponents: [.date, .hourAndMinute])
+                }
+                .font(WFont.text(16, weight: .medium))
+                .foregroundColor(.white)
+                .tint(Theme.accentBlue)
+                .environment(\.locale, Locale(identifier: "fr_FR"))
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.cardGradient))
+                Text("Woop recalcule les phases, la VFC, la fréquence cardiaque au repos et la récupération sur ces heures.")
+                    .font(WFont.text(12.5)).foregroundColor(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !valid {
+                    Text("Le réveil doit suivre l'endormissement (20 minutes à 20 heures).")
+                        .font(WFont.text(12.5)).foregroundColor(Theme.alarmOrange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Spacer()
+                PrimaryButton(title: "Enregistrer") {
+                    guard valid else { return }
+                    app.setSleepEdit(date: date, start: Int(start.timeIntervalSince1970), end: Int(end.timeIntervalSince1970))
+                    dismiss()
+                }
+                .opacity(valid ? 1 : 0.4)
+                if app.settings.sleepEdits[date] != nil {
+                    OutlineButton(title: "Revenir à la détection automatique") {
+                        app.setSleepEdit(date: date, start: nil, end: nil)
+                        dismiss()
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.side)
+            .padding(.bottom, 18)
+        }
+        .preferredColorScheme(.dark)
+        .onAppear {
+            if let s = sleep {
+                start = Date(timeIntervalSince1970: TimeInterval(s.start))
+                end = Date(timeIntervalSince1970: TimeInterval(s.end))
+            } else if let day = DayKey.startUnix(date) {
+                start = Date(timeIntervalSince1970: TimeInterval(day - 3600))
+                end = Date(timeIntervalSince1970: TimeInterval(day + 7 * 3600))
+            }
+        }
     }
 }

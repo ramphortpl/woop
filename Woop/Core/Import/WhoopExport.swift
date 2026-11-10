@@ -392,9 +392,16 @@ extension DayMetrics {
         d.sleepDebtSec = imp.sleepDebtSec ?? d.sleepDebtSec
         if let s = imp.sleep {
             var m = s
-            if let local = d.sleep { m.stages = local.stages; m.hrv = local.hrv; m.rhr = local.rhr; m.avgHR = local.avgHR }
+            if let local = d.sleep {
+                m.stages = local.stages; m.hrv = local.hrv; m.rhr = local.rhr; m.avgHR = local.avgHR
+                m.highStressPct = local.highStressPct; m.hrvWindows = local.hrvWindows; m.hrvNoise = local.hrvNoise
+            }
             d.sleep = m
         }
+        if let need = d.sleepNeedSec, need > 0, let s = d.sleep {
+            d.sleepHoursVsNeed = min(100, Double(s.asleepSec) / need * 100)
+        }
+        if imp.recovery != nil { d.recoveryCalibrated = nil }
         if !imp.naps.isEmpty { d.naps = imp.naps }
         if d.calibrationNights != nil && d.recovery != nil { d.calibrationNights = nil }
         return d

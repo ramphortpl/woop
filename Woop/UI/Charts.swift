@@ -208,6 +208,8 @@ struct ActivityHRChart: View {
     var start: Int
     var end: Int
     var maxHR: Double
+    /// Resting heart rate: WHOOP's zones are shares of the heart-rate reserve.
+    var restHR: Double = 60
 
     var body: some View {
         Canvas { ctx, size in
@@ -219,9 +221,10 @@ struct ActivityHRChart: View {
             func X(_ t: Int) -> CGFloat { left + CGFloat(Double(t - start) / Double(end - start)) * (size.width - left) }
             func Y(_ v: Double) -> CGFloat { bottom - CGFloat((v - lo) / max(1, hi - lo)) * (bottom - top) }
 
-            // Zone bands (50/60/70/80/90 % of max HR).
+            // Zone bands (50/60/70/80/90 % of the heart-rate reserve).
             for z in 1...5 {
-                let a = maxHR * (0.4 + 0.1 * Double(z)), b = z == 5 ? hi : maxHR * (0.5 + 0.1 * Double(z))
+                let a = Strain.zoneFloor(z, rest: restHR, maxHR: maxHR)
+                let b = z == 5 ? hi : Strain.zoneFloor(z + 1, rest: restHR, maxHR: maxHR)
                 let y0 = Y(min(hi, max(lo, b))), y1 = Y(min(hi, max(lo, a)))
                 guard y1 > y0 else { continue }
                 ctx.fill(Path(CGRect(x: left, y: y0, width: size.width - left, height: y1 - y0)), with: .color(Theme.zoneColor(z).opacity(0.07)))
@@ -241,7 +244,7 @@ struct ActivityHRChart: View {
                     var seg = Path()
                     seg.move(to: CGPoint(x: X(q.ts), y: Y(q.bpm)))
                     seg.addLine(to: CGPoint(x: X(p.ts), y: Y(p.bpm)))
-                    let z = Strain.zone((p.bpm + q.bpm) / 2, maxHR: maxHR)
+                    let z = Strain.zone((p.bpm + q.bpm) / 2, rest: restHR, maxHR: maxHR)
                     ctx.stroke(seg, with: .color(Theme.zoneColor(max(1, z))), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
                 prev = p

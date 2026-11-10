@@ -238,6 +238,43 @@ final class Database {
         }
     }
 
+    /// Strap events in `[from, to)`, optionally only some ids (e.g. wrist on / off).
+    func events(from: Int, to: Int, ids: [Int] = []) -> [StoredEvent] {
+        queue.sync {
+            guard let st = prepare("SELECT ts,id FROM event WHERE ts >= ? AND ts < ? ORDER BY ts") else { return [] }
+            defer { sqlite3_finalize(st) }
+            sqlite3_bind_int64(st, 1, Int64(from))
+            sqlite3_bind_int64(st, 2, Int64(to))
+            var out: [StoredEvent] = []
+            while sqlite3_step(st) == SQLITE_ROW {
+                let id = Int(sqlite3_column_int(st, 1))
+                if !ids.isEmpty && !ids.contains(id) { continue }
+                out.append(StoredEvent(ts: Int(sqlite3_column_int64(st, 0)), id: id, body: []))
+            }
+            return out
+        }
+    }
+
+    /// Seconds of strap data per local day key, for the data-quality screen (newest first).
+    func sampleSecondsByDay(from: Int, to: Int, dayKey: (Int) -> String) -> [(day: String, seconds: Int, history: Int)] {
+        queue.sync {
+            guard let st = prepare("""
+                SELECT (ts/3600)*3600 AS h, COUNT(*), SUM(CASE WHEN src = 0 THEN 1 ELSE 0 END)
+                FROM sample WHERE ts >= ? AND ts < ? GROUP BY h ORDER BY h
+                """) else { return [] }
+            defer { sqlite3_finalize(st) }
+            sqlite3_bind_int64(st, 1, Int64(from))
+            sqlite3_bind_int64(st, 2, Int64(to))
+            var acc: [String: (Int, Int)] = [:]
+            while sqlite3_step(st) == SQLITE_ROW {
+                let key = dayKey(Int(sqlite3_column_int64(st, 0)))
+                let cur = acc[key] ?? (0, 0)
+                acc[key] = (cur.0 + Int(sqlite3_column_int64(st, 1)), cur.1 + Int(sqlite3_column_int64(st, 2)))
+            }
+            return acc.map { (day: $0.key, seconds: $0.value.0, history: $0.value.1) }.sorted { $0.day > $1.day }
+        }
+    }
+
     // MARK: - Days
 
     private let encoder = JSONEncoder()

@@ -90,6 +90,10 @@ final class StrapManager: NSObject, ObservableObject {
     @Published private(set) var lastSync: Date?
     @Published private(set) var lastError: String?
     @Published private(set) var pairedID: UUID?
+    /// Completed history transfers in a row that brought no data at all.
+    @Published private(set) var emptySyncs = 0
+    /// Seconds of history received by the last completed transfer.
+    @Published private(set) var lastSyncSeconds: Int?
 
     // Fast-changing values live in their own small observable objects, so a 1 Hz heart rate or
     // a sync progress counter only redraws the few views that display them (not every screen
@@ -146,6 +150,7 @@ final class StrapManager: NSObject, ObservableObject {
     private var backgroundLive = false
     private var drainWaiters: [(Bool) -> Void] = []
     private var drainStarting = false
+    private var drainStartTotal = 0
 
     private struct Waiter {
         let id: Int
@@ -161,6 +166,19 @@ final class StrapManager: NSObject, ObservableObject {
         static let generation = "woop.strap.generation"
         static let name = "woop.strap.name"
         static let lastSync = "woop.strap.lastSync"
+    }
+
+    /// (major, minor) of the strap firmware, e.g. (50, 43) for "50.43.1.0".
+    var firmwareVersion: (major: Int, minor: Int)? {
+        guard let parts = firmware?.split(separator: ".").compactMap({ Int($0) }), parts.count >= 2 else { return nil }
+        return (parts[0], parts[1])
+    }
+
+    /// WHOOP 5.0 / MG firmware 50.43 and later is reported to withhold history (and sometimes
+    /// live data) from third-party apps unless WHOOP's own app has installed its signed token.
+    var firmwareMayWithholdData: Bool {
+        guard let v = firmwareVersion else { return false }
+        return v.major == 50 && v.minor >= 43
     }
 
     private override init() {
@@ -601,6 +619,7 @@ final class StrapManager: NSObject, ObservableObject {
 
     private func markDrainStarted() {
         drainStartedAt = Date()
+        drainStartTotal = drain.totalSamples
         lastHistoryTraffic = Date()
         publish { $0.syncing = true; $0.progress.seconds = 0 }
     }
@@ -680,12 +699,17 @@ final class StrapManager: NSObject, ObservableObject {
             failDrainWaiters()
             publish { $0.syncing = false }
         case .complete:
-            let n = drain.totalSamples
+            let n = max(0, drain.totalSamples - drainStartTotal)
             logLine("Historique synchronisé (\(n) secondes de données)")
             let now = Date()
             lastSyncDateOnQueue = now
             UserDefaults.standard.set(now, forKey: Keys.lastSync)
-            publish { $0.syncing = false; $0.lastSync = now }
+            publish {
+                $0.syncing = false
+                $0.lastSync = now
+                $0.lastSyncSeconds = n
+                $0.emptySyncs = n == 0 ? $0.emptySyncs + 1 : 0
+            }
             onDrainComplete?()
             let waiters = drainWaiters
             drainWaiters.removeAll()

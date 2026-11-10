@@ -24,6 +24,8 @@ struct AppSettings: Codable, Equatable {
     /// "Suivi d'itinéraire" and "Objectif d'effort" on the start-activity screen.
     var routeTracking = true
     var strainTargetOn = true
+    /// Sleep times corrected by hand, per wake day (`[start, end]` unix seconds).
+    var sleepEdits: [String: [Int]] = [:]
 }
 
 extension AppSettings {
@@ -48,6 +50,7 @@ extension AppSettings {
         strainStats = (try? c.decodeIfPresent([DashboardMetric].self, forKey: .strainStats)) ?? d.strainStats
         routeTracking = (try? c.decodeIfPresent(Bool.self, forKey: .routeTracking)) ?? d.routeTracking
         strainTargetOn = (try? c.decodeIfPresent(Bool.self, forKey: .strainTargetOn)) ?? d.strainTargetOn
+        sleepEdits = (try? c.decodeIfPresent([String: [Int]].self, forKey: .sleepEdits)) ?? d.sleepEdits
     }
 }
 
@@ -94,6 +97,10 @@ final class AppState: ObservableObject {
     private var computedDays: [String: DayMetrics] = [:]
     /// Days imported from the official WHOOP export (WHOOP's own scores).
     private(set) var importedDays: [String: DayMetrics] = [:]
+    /// Personal calibration learned from the WHOOP export (nil = none imported yet).
+    @Published private(set) var calibration: Calibration?
+    private var calibrationFitting = false
+    private static let calibrationKey = "woop.calibration"
     private var recomputeDeadline: Date?
     private var recomputeToken = 0
     /// A recompute requested while one was running: `.some(nil)` = full, `.some(n)` = last n days.
@@ -114,6 +121,10 @@ final class AppState: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: "woop.live.session"),
            let s = try? JSONDecoder().decode(LiveSession.self, from: data) {
             liveSession = s
+        }
+        if let data = UserDefaults.standard.data(forKey: Self.calibrationKey),
+           let c = try? JSONDecoder().decode(Calibration.self, from: data), c.version == Calibration.currentVersion {
+            calibration = c
         }
     }
 
@@ -147,7 +158,17 @@ final class AppState: ObservableObject {
             enableDemo()
         } else {
             loadStored()
-            recompute(daysBack: 3)
+            // Today first, then everything missing or computed by an older version of the engine.
+            recompute(daysBack: 3) { [weak self] in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.calibration == nil && !self.importedDays.isEmpty {
+                        self.refitCalibration()
+                    } else {
+                        self.recompute(daysBack: nil)
+                    }
+                }
+            }
         }
         if settings.onboardingDone && !settings.demoMode {
             strap.start()
@@ -199,7 +220,8 @@ final class AppState: ObservableObject {
     }
 
     func loadStored() {
-        let all = Database.shared.allDays().filter { $0.algoVersion == DayMetrics.algoVersion }
+        // Days computed by an older engine stay visible until the recompute pass replaces them.
+        let all = Database.shared.allDays()
         var map: [String: DayMetrics] = [:]
         for d in all { map[d.date] = d }
         computedDays = map
@@ -268,6 +290,8 @@ final class AppState: ObservableObject {
         let imported = settings.demoMode ? [:] : importedDays
         let demo = settings.demoMode ? demoSamples : nil
         let activities = userActivities
+        let calibration = settings.demoMode ? nil : self.calibration
+        let reach = max(45, min(settings.rawRetentionDays, 120))
         analyticsQueue.async {
             let now = Int(Date().timeIntervalSince1970)
             let today = DayKey.today()
@@ -290,8 +314,8 @@ final class AppState: ObservableObject {
             if let n = daysBack {
                 startKey = DayKey.adding(-(n - 1), to: today)
             } else {
-                // Everything missing or stale, at most 45 days back.
-                let floor = DayKey.adding(-44, to: today)
+                // Everything missing or stale, as far back as raw seconds are kept.
+                let floor = DayKey.adding(-(reach - 1), to: today)
                 var k = max(oldest, floor)
                 while k < today, let d = existing[k], d.algoVersion == DayMetrics.algoVersion,
                       d.computedAt > (DayKey.startUnix(DayKey.adding(2, to: k)) ?? 0) {
@@ -307,17 +331,24 @@ final class AppState: ObservableObject {
                 let from = ds - 13 * 3600
                 let to = min(now, ds + 86400 + 13 * 3600)
                 let samples: [HistorySample]
+                var events: [StoredEvent] = []
                 if let demo {
                     samples = Array(TimeIndex.slice(demo, from: from, to: to))
                 } else {
                     samples = Database.shared.samples(from: from, to: to)
+                    events = Database.shared.events(from: from, to: to, ids: [EventID.wristOn, EventID.wristOff])
                 }
                 let floorKey = DayKey.adding(-60, to: key)
                 let hist = Self.merge(computed.filter { $0.key < key && $0.key >= floorKey },
                                       imported.filter { $0.key < key && $0.key >= floorKey })
                     .values.sorted { $0.date < $1.date }
-                var m = DayEngine.compute(DayInputs(date: key, samples: samples, profile: settings.profile,
-                                                    history: Array(hist), userActivities: activities, now: now))
+                var inputs = DayInputs(date: key, samples: samples, profile: settings.profile,
+                                       history: Array(hist), userActivities: activities, now: now,
+                                       events: events, calibration: calibration)
+                if demo == nil, let e = settings.sleepEdits[key], e.count == 2, e[1] > e[0] {
+                    inputs.forcedSleep = (e[0], e[1])
+                }
+                var m = DayEngine.compute(inputs)
                 if let steps = m.steps { m.steps = Int((Double(steps) / max(0.5, settings.stepCalibration)).rounded()) }
                 if m.hasData || m.calories != nil {
                     computed[key] = m
@@ -333,6 +364,7 @@ final class AppState: ObservableObject {
                 self.evaluateNotifications()
                 completion?()
                 self.runPendingRecompute()
+                self.refitCalibrationIfOverlapChanged()
             }
         }
     }
@@ -347,7 +379,61 @@ final class AppState: ObservableObject {
         guard !computing else { return }
         computedDays = [:]
         rebuildMerged()
-        recompute(daysBack: 45)
+        recompute(daysBack: max(45, min(settings.rawRetentionDays, 120)))
+    }
+
+    // MARK: Manual sleep correction
+
+    /// Replace the detected night of `date` by the given times (nil = back to automatic detection).
+    func setSleepEdit(date: String, start: Int?, end: Int?) {
+        if let start, let end, end > start {
+            settings.sleepEdits[date] = [start, end]
+        } else {
+            settings.sleepEdits[date] = nil
+        }
+        let back = DayKey.startUnix(today).flatMap { t in DayKey.startUnix(date).map { (t - $0) / 86400 + 2 } } ?? 2
+        recompute(daysBack: max(2, min(back, 120)))
+    }
+
+    // MARK: WHOOP calibration
+
+    /// Learn the personal mappings from the imported WHOOP days (and the nights measured by
+    /// both), then rescore the days computed on the phone with them.
+    func refitCalibration() {
+        guard !settings.demoMode, !calibrationFitting else { return }
+        guard !importedDays.isEmpty else {
+            if calibration != nil {
+                calibration = nil
+                UserDefaults.standard.removeObject(forKey: Self.calibrationKey)
+                recompute(daysBack: max(45, min(settings.rawRetentionDays, 120)))
+            }
+            return
+        }
+        calibrationFitting = true
+        let imported = importedDays.values.sorted { $0.date < $1.date }
+        let computed = computedDays
+        let profile = settings.profile
+        analyticsQueue.async {
+            let fitted = Calibration.fit(imported: imported, computed: computed, profile: profile, tz: DayEngine.tzOffset)
+            Task { @MainActor in
+                self.calibrationFitting = false
+                guard fitted != self.calibration else {
+                    self.recompute(daysBack: nil)
+                    return
+                }
+                self.calibration = fitted
+                if let data = try? JSONEncoder().encode(fitted) { UserDefaults.standard.set(data, forKey: Self.calibrationKey) }
+                self.recompute(daysBack: max(45, min(self.settings.rawRetentionDays, 120)))
+            }
+        }
+    }
+
+    /// Nights measured both by WHOOP and by this app feed the HRV / resting-HR alignment: refit
+    /// when their number changes.
+    private func refitCalibrationIfOverlapChanged() {
+        guard !settings.demoMode, !importedDays.isEmpty, !calibrationFitting, !computing else { return }
+        let overlap = importedDays.keys.filter { computedDays[$0]?.sleep != nil }.count
+        if calibration == nil || overlap != calibration?.overlapNights { refitCalibration() }
     }
 
     // MARK: Notifications

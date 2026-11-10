@@ -2,86 +2,94 @@ import Foundation
 
 /// Cardiovascular load ("Effort", 0–21).
 ///
-/// Method (published): Banister TRIMP on heart-rate reserve (Karvonen %HRR) with the
-/// sex-specific exponential weighting (Banister 1991; Morton 1990), counted ABOVE the wearer's
-/// own quiet-waking level so a day of sitting scores ~0, with exercise minutes (≥ 40 % HRR,
-/// ACSM moderate floor) never offset by quiet time. The net load is log-mapped onto 0–21:
-/// `21 · ln(1 + u·(C−1)) / ln(C)`, `u = min(1, net / 400)`, `C = 15` — calibrated so a 60-min walk
-/// lands ~3, a 45-min moderate run ~9, a 90-min hard session ~16–17 (anchors documented by
-/// OpenStrap analytics).
+/// Method (NOOP `StrainScorer`, the WHOOP-like one): every second of heart rate is weighted by
+/// its heart-rate-reserve zone (Karvonen %HRR; weights 1…5 at 50 / 60 / 70 / 80 / 90 %, the
+/// Edwards summation read on %HRR), summed in zone-minutes, then log-compressed:
+///
+///     effort = 21 · ln(load + 1) / ln(D),   D = 7201
+///
+/// `D` puts 24 h in the top zone (5 × 1440) exactly at 21, so each extra point costs
+/// exponentially more — which is what makes a day's total barely move after a big session.
+///
+/// Below zone 1 the weight does not drop to zero: it decays exponentially
+/// (`e^(−11,5·(0,5 − x))`), so being up and about adds a little all day long, as on WHOOP. The
+/// decay rate is set on a real WHOOP day (the wearer's own): a 2 h 26 ride at 12,6 and a 40-min
+/// hike at 4,1 made a 12,8 day by 16:19 — the hike's load is that of ~31 % HRR, and the ~5 other
+/// waking hours fit in what is left.
+///
+/// `D` can be re-fitted on the wearer's own WHOOP workouts (see `Calibration`).
 enum Strain {
-    static let maximalNetTrimp = 400.0
-    static let curvature = 15.0
-    static let exerciseFloorHRR = 0.40
-    static let maxQuietHRR = 0.40
-    static let defaultQuietHRR = 0.20
-
-    static func banisterY(_ x: Double, female: Bool) -> Double {
-        female ? 0.86 * exp(1.67 * x) : 0.64 * exp(1.92 * x)
-    }
+    static let maxStrain = 21.0
+    static let defaultDenominator = 7201.0
+    /// Decay rate of the weight below zone 1 (per unit of heart-rate-reserve fraction).
+    static let subZoneDecay = 11.5
+    static let zoneCuts: [Double] = [0.50, 0.60, 0.70, 0.80, 0.90]
 
     static func hrr(_ hr: Double, rest: Double, max: Double) -> Double {
         guard max > rest else { return 0 }
         return Stats.clamp((hr - rest) / (max - rest), 0, 1)
     }
 
-    /// Inverse of `fromNetTrimp` (net load that yields a given strain), to add a live session's
-    /// load to the day's strain.
-    static func netTrimp(forStrain strain: Double) -> Double {
-        let s = Stats.clamp(strain, 0, 21)
-        let u = (pow(curvature, s / 21) - 1) / (curvature - 1)
-        return u * maximalNetTrimp
+    /// Load weight (per minute) of a heart-rate-reserve fraction.
+    static func weight(_ x: Double) -> Double {
+        if x >= 0.90 { return 5 }
+        if x >= 0.80 { return 4 }
+        if x >= 0.70 { return 3 }
+        if x >= 0.60 { return 2 }
+        if x >= 0.50 { return 1 }
+        return exp(-subZoneDecay * (0.50 - max(0, x)))
     }
 
-    static func fromNetTrimp(_ net: Double) -> Double {
-        guard net.isFinite, net > 0 else { return 0 }
-        let u = min(1, net / maximalNetTrimp)
-        return Stats.clamp(21 * log(1 + u * (curvature - 1)) / log(curvature), 0, 21)
+    /// Effort for a load in weighted zone-minutes.
+    static func fromLoad(_ load: Double, denominator: Double = defaultDenominator) -> Double {
+        guard load.isFinite, load > 0, denominator > 1 else { return 0 }
+        return Stats.clamp(maxStrain * log(load + 1) / log(denominator), 0, maxStrain)
     }
 
-    /// Accumulates per-minute HR into net TRIMP; `exercise` never decreases.
+    /// Inverse of `fromLoad`: the load that yields a given effort.
+    static func load(forStrain strain: Double, denominator: Double = defaultDenominator) -> Double {
+        let s = Stats.clamp(strain, 0, maxStrain)
+        return exp(s / maxStrain * log(denominator)) - 1
+    }
+
+    /// Accumulates heart rate into load.
     struct Accumulator {
         let rest: Double
         let maxHR: Double
-        let female: Bool
-        let quietRate: Double
-        var exercise = 0.0
-        var living = 0.0
-        var minutes = 0
+        let denominator: Double
+        private(set) var load = 0.0
+        private(set) var minutes = 0.0
 
-        init(rest: Double, maxHR: Double, quietHRR: Double, female: Bool) {
+        init(rest: Double, maxHR: Double, denominator: Double = Strain.defaultDenominator) {
             self.rest = rest
             self.maxHR = maxHR
-            self.female = female
-            let q = Stats.clamp(quietHRR, 0.01, Strain.maxQuietHRR)
-            quietRate = q * Strain.banisterY(q, female: female)
+            self.denominator = denominator
         }
 
+        /// - Parameter weight: minutes this heart-rate value covers.
         mutating func add(_ hr: Double, weight: Double = 1) {
-            guard hr.isFinite, hr > 0 else { return }
-            let x = Strain.hrr(hr, rest: rest, max: maxHR)
-            let e = (x * Strain.banisterY(x, female: female) - quietRate) * weight
-            if x >= Strain.exerciseFloorHRR { exercise += e } else { living += e }
-            minutes += 1
+            guard hr.isFinite, hr > 0, weight > 0 else { return }
+            load += Strain.weight(Strain.hrr(hr, rest: rest, max: maxHR)) * weight
+            minutes += weight
         }
 
-        var net: Double { exercise + max(0, living) }
-        var strain: Double { Strain.fromNetTrimp(net) }
+        var strain: Double { Strain.fromLoad(load, denominator: denominator) }
     }
 
-    /// WHOOP heart-rate zones by % of max HR: 0 (<50 %), 1 (50–60), 2 (60–70), 3 (70–80),
-    /// 4 (80–90), 5 (≥ 90).
-    static func zone(_ hr: Double, maxHR: Double) -> Int {
-        guard maxHR > 0, hr > 0 else { return 0 }
-        let p = hr / maxHR
-        switch p {
-        case ..<0.5: return 0
-        case ..<0.6: return 1
-        case ..<0.7: return 2
-        case ..<0.8: return 3
-        case ..<0.9: return 4
-        default: return 5
-        }
+    /// WHOOP heart-rate zones on heart-rate reserve: 0 (< 50 %), 1 (50–60), 2 (60–70),
+    /// 3 (70–80), 4 (80–90), 5 (≥ 90).
+    static func zone(_ hr: Double, rest: Double, maxHR: Double) -> Int {
+        guard maxHR > rest, hr > 0 else { return 0 }
+        let x = (hr - rest) / (maxHR - rest)
+        var z = 0
+        for c in zoneCuts where x >= c { z += 1 }
+        return z
+    }
+
+    /// Heart rate at the lower edge of a zone (1…5).
+    static func zoneFloor(_ zone: Int, rest: Double, maxHR: Double) -> Double {
+        let i = Swift.max(1, Swift.min(5, zone)) - 1
+        return rest + zoneCuts[i] * (maxHR - rest)
     }
 
     /// Keytel et al. 2005 energy expenditure from HR (kcal/min).
@@ -93,39 +101,36 @@ enum Strain {
         } else {
             kj = -20.4022 + 0.4472 * hr - 0.1263 * w + 0.074 * a
         }
-        return max(0, kj / 4.184)
+        return Swift.max(0, kj / 4.184)
     }
 
     /// Calories for one minute: BMR share, raised by Keytel during exertion.
-    static func kcalForMinute(hr: Double?, asleep: Bool, rest: Double, maxHR: Double, profile: UserProfile) -> (total: Double, active: Double) {
+    /// `activeScale` rescales the part above basal (personal WHOOP calibration; 1 = none).
+    static func kcalForMinute(hr: Double?, asleep: Bool, rest: Double, maxHR: Double, profile: UserProfile,
+                              activeScale: Double = 1) -> (total: Double, active: Double) {
         let basal = profile.bmr / 1440
         if asleep { return (basal * 0.95, 0) }
         guard let hr, hr > 0 else { return (basal * 1.1, 0) }
         let x = hrr(hr, rest: rest, max: maxHR)
+        var k: Double
         if x >= 0.30 {
-            let k = max(basal * 1.1, keytelKcalPerMin(hr: hr, profile: profile))
-            return (k, max(0, k - basal))
+            k = Swift.max(basal * 1.1, keytelKcalPerMin(hr: hr, profile: profile))
+        } else {
+            // Light activity (standing, pottering): a small HR-proportional uplift.
+            k = basal * (1.1 + 0.6 * x / 0.30)
         }
-        // Light activity (standing, pottering): a small HR-proportional uplift.
-        let k = basal * (1.1 + 0.6 * x / 0.30)
-        return (k, max(0, k - basal))
+        let active = Swift.max(0, k - basal) * activeScale
+        k = basal + active
+        return (k, active)
     }
 
     /// The wearer's quiet waking level for a day: median per-minute %HRR over awake worn
-    /// minutes; nil when too little wear or implausibly high.
+    /// minutes; nil when too little wear or implausibly high. (Kept for the stress monitor.)
     static func dailyQuietHRR(minuteHR: [Double], rest: Double, maxHR: Double) -> Double? {
         guard minuteHR.count >= 180 else { return nil }
         let x = minuteHR.map { hrr($0, rest: rest, max: maxHR) }
-        guard let q = Stats.median(x), q > 0, q <= maxQuietHRR else { return nil }
+        guard let q = Stats.median(x), q > 0, q <= 0.40 else { return nil }
         return q
-    }
-
-    /// Observed max-HR estimate: 99.5th percentile of recent HR, never below Tanaka.
-    static func estimateMaxHR(recentHR: [Double], profile: UserProfile) -> Double {
-        if let o = profile.maxHROverride, o > 100 { return Double(o) }
-        let tanaka = profile.tanakaMaxHR
-        guard recentHR.count >= 600, let p = Stats.percentile(recentHR, 99.5) else { return tanaka }
-        return max(tanaka, min(p, 220))
     }
 }
 

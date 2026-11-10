@@ -117,7 +117,8 @@ extension AppState {
                 self.importStatusText = nil
                 if outcome.success && !demo {
                     self.loadStored()
-                    self.recompute(daysBack: nil)
+                    // Learn the wearer's own WHOOP mappings from the export, then rescore.
+                    self.refitCalibration()
                 }
                 self.lastImportMessage = outcome.title + " — " + outcome.message
                 self.importOutcome = outcome

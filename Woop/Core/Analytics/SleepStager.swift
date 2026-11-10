@@ -48,18 +48,32 @@ enum SleepStager {
     static let padHi = 390
 
     /// Stage `[start, end)` from the ts-sorted samples (any superset of the window is fine).
-    static func stage(samples: [HistorySample], start: Int, end: Int) -> [StageSegment] {
+    /// - Parameter priors: the wearer's own typical stage shares (from their WHOOP nights), used in
+    ///   place of the population base rates.
+    static func stage(samples: [HistorySample], start: Int, end: Int,
+                      priors: Calibration.StageShares? = nil) -> [StageSegment] {
         let slice = TimeIndex.slice(samples, from: start - padLo, to: end + padHi)
         let feats = features(slice, start: start, end: end)
-        guard !feats.isEmpty else { return [StageSegment(start: start, end: end, stage: .light)] }
-        let labels = stageEpochs(feats)
+        guard !feats.isEmpty else { return [] }
+        let labels = stageEpochs(feats, priors: logPriors(priors))
+        // One segment per staged epoch. A second we did not observe has no stage: an epoch with
+        // no heart rate is skipped (a still strap with no pulse is not sleep), and a coverage
+        // hole is left open instead of being carried by the previous label.
         var segs: [StageSegment] = []
-        for (i, f) in feats.enumerated() {
-            let s = i == 0 ? start : f.start
-            let e = i == feats.count - 1 ? end : feats[i + 1].start
-            if var last = segs.last, last.stage == labels[i] {
-                last.end = e
-                segs[segs.count - 1] = last
+        for (i, f) in feats.enumerated() where f.hr != nil {
+            var s = f.start
+            if i == 0 && f.start - start < 30 { s = start }
+            var e = f.start + 30
+            if i == feats.count - 1 {
+                if end - e < 30 { e = end }
+            } else if feats[i + 1].start - f.start <= 60 {
+                e = feats[i + 1].start
+            }
+            s = max(s, start)
+            e = min(e, end)
+            guard e > s else { continue }
+            if let last = segs.last, last.stage == labels[i], last.end == s {
+                segs[segs.count - 1].end = e
             } else {
                 segs.append(StageSegment(start: s, end: e, stage: labels[i]))
             }
@@ -140,30 +154,26 @@ enum SleepStager {
         }
     }
 
-    /// RSA breathing regularity: spectral peakedness (peak / band power) in 0.15–0.40 Hz.
-    static func respRegularity(_ beats: ArraySlice<HRV.Beat>) -> Double? {
-        guard beats.count >= 12 else { return nil }
-        var times: [Double] = [], values: [Double] = []
-        var t = 0.0
-        var anchored = false
-        for b in beats {
-            let v = min(max(b.rr, 300), 2000)
-            if !b.adjacent || !anchored { t = Double(b.ts); anchored = true } else { t += v / 1000 }
-            times.append(t)
-            values.append(v)
-        }
-        let order = times.indices.sorted { times[$0] < times[$1] }
-        let ts = order.map { times[$0] }, vs = order.map { values[$0] }
-        guard let t0 = ts.first, let tN = ts.last, tN > t0 else { return nil }
-        let n = Int(((tN - t0) / 0.25).rounded(.up))
+    /// RSA breathing regularity: spectral peakedness (peak / band power) in 0.15–0.40 Hz of the
+    /// 4 Hz-resampled tachogram. As in the reference recipe, each interval is placed on the
+    /// second of the record that carried it (clamped to 300–2000 ms).
+    static func respRegularity(_ window: ArraySlice<HRV.Beat>) -> Double? {
+        guard window.count >= 12 else { return nil }
+        var beats: [(t: Double, v: Double)] = []
+        beats.reserveCapacity(window.count)
+        for b in window { beats.append((Double(b.ts), min(max(b.rr, 300), 2000))) }
+        beats.sort { $0.t != $1.t ? $0.t < $1.t : $0.v < $1.v }
+        let t0 = beats[0].t, tN = beats[beats.count - 1].t
+        guard tN > t0 else { return nil }
+        let n = Int(((tN - t0) / 0.25 - 1e-9).rounded(.up))
         guard n >= 16 else { return nil }
         var y = [Double](repeating: 0, count: n)
         var seg = 0
         for i in 0..<n {
             let tt = t0 + 0.25 * Double(i)
-            while seg < ts.count - 2 && ts[seg + 1] < tt { seg += 1 }
-            let ta = ts[seg], tb = ts[min(seg + 1, ts.count - 1)]
-            let va = vs[seg], vb = vs[min(seg + 1, vs.count - 1)]
+            while seg < beats.count - 2 && beats[seg + 1].t < tt { seg += 1 }
+            let ta = beats[seg].t, tb = beats[seg + 1].t
+            let va = beats[seg].v, vb = beats[seg + 1].v
             y[i] = tb <= ta ? va : va + min(max((tt - ta) / (tb - ta), 0), 1) * (vb - va)
         }
         let m = y.reduce(0, +) / Double(n)
@@ -173,6 +183,7 @@ enum SleepStager {
         guard kHi >= kLo, kLo >= 0 else { return nil }
         var maxP = 0.0, sumP = 0.0
         for k in kLo...kHi {
+            // Goertzel: |DFT bin k|² without per-sample trigonometry.
             let coeff = 2 * cos(2 * Double.pi * Double(k) / Double(n))
             var s1 = 0.0, s2 = 0.0
             for j in 0..<n {
@@ -240,7 +251,14 @@ enum SleepStager {
         return path.reversed()
     }
 
-    static func stageEpochs(_ feats: [Epoch]) -> [SleepStage] {
+    /// Log-priors from personal stage shares (floored so no stage can be ruled out).
+    static func logPriors(_ p: Calibration.StageShares?) -> [SleepStage: Double] {
+        guard let p else { return baseLogPrior }
+        return [.light: log(max(p.light, 0.20)), .deep: log(max(p.deep, 0.05)),
+                .rem: log(max(p.rem, 0.08)), .wake: log(Stats.clamp(p.awake, 0.04, 0.25))]
+    }
+
+    static func stageEpochs(_ feats: [Epoch], priors: [SleepStage: Double] = baseLogPrior) -> [SleepStage] {
         guard !feats.isEmpty else { return [] }
         func zfun(_ vals: [Double?]) -> (Double?) -> Double {
             let present = vals.compactMap { $0 }
@@ -269,10 +287,10 @@ enum SleepStager {
             let cardiac0 = 0.8 * zv + 0.4 * zh
             let cardiac = quiescent ? min(0, cardiac0) : cardiac0
             var em: [SleepStage: Double] = [
-                .deep: -1.1 * zv - 0.5 * zm - gate + baseLogPrior[.deep]!,
-                .rem: 0.6 * zv - 0.6 * zm + 0.4 * zh + baseLogPrior[.rem]!,
-                .light: baseLogPrior[.light]!,
-                .wake: 1.0 * zm + cardiac + baseLogPrior[.wake]!,
+                .deep: -1.1 * zv - 0.5 * zm - gate + priors[.deep]!,
+                .rem: 0.6 * zv - 0.6 * zm + 0.4 * zh + priors[.rem]!,
+                .light: priors[.light]!,
+                .wake: 1.0 * zm + cardiac + priors[.wake]!,
             ]
             let pr = cyclePrior(f.clock, .infinity)
             for s in stages { em[s]! += pr[s]! }

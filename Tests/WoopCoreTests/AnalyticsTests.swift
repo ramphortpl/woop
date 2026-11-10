@@ -123,7 +123,7 @@ final class AnalyticsTests: XCTestCase {
         if let r = d2.rhr { XCTAssertEqual(r, 52, accuracy: 4) }
         if let rr = d2.respRate { XCTAssertEqual(rr, 14, accuracy: 2) }
         XCTAssertNotNil(d2.strain)
-        if let st = d2.strain { XCTAssertGreaterThan(st, 8); XCTAssertLessThan(st, 19) }
+        if let st = d2.strain { XCTAssertGreaterThan(st, 9); XCTAssertLessThan(st, 16) }
         XCTAssertEqual(d2.activities.count, 1)
         XCTAssertEqual(d2.activities.first?.sport, "course")
         // Recovery appears once calibrated, and tracks the HRV change.
@@ -134,16 +134,39 @@ final class AnalyticsTests: XCTestCase {
     }
 
     func testStrainAnchors() {
-        // 60 min at 105 bpm vs 90 min at 165 bpm (RHR 60, HRmax 187, quiet 0.20 HRR).
+        // RHR 60, HRmax 190 → reserve 130: 50 % = 125 bpm, 60 % = 138, 80 % = 164.
         func strain(_ hr: Double, _ minutes: Int) -> Double {
-            var a = Strain.Accumulator(rest: 60, maxHR: 187, quietHRR: 0.20, female: false)
+            var a = Strain.Accumulator(rest: 60, maxHR: 190)
             for _ in 0..<minutes { a.add(hr) }
             return a.strain
         }
-        XCTAssertEqual(strain(105, 60), 3, accuracy: 1.5)
-        XCTAssertEqual(strain(145, 45), 8.9, accuracy: 1.5)
-        XCTAssertEqual(strain(165, 90), 16.7, accuracy: 1.5)
-        XCTAssertEqual(strain(80, 600), 0, accuracy: 0.5)
+        // 16 waking hours at 80 bpm (15 % of the reserve): a quiet day lands where WHOOP puts one.
+        XCTAssertEqual(strain(80, 960), 6.5, accuracy: 1.5)
+        // A gentle 40-minute walk at 100 bpm (31 %): the wearer's WHOOP hike scored 4,1.
+        XCTAssertEqual(strain(100, 40), 4.1, accuracy: 0.8)
+        XCTAssertEqual(strain(130, 60), 2.364 * log(61), accuracy: 0.05)  // one hour in zone 1
+        XCTAssertEqual(strain(170, 90), 2.364 * log(361), accuracy: 0.05) // 90 min in zone 4
+        XCTAssertEqual(strain(189, 1440), 21, accuracy: 0.01)       // the ceiling: 24 h in zone 5
+    }
+
+    /// A real WHOOP day (the wearer's own screenshots): a 12,6 ride and a 4,1 hike made a 12,8
+    /// day. The scale must be compressive enough for that to be possible.
+    func testStrainIsAsCompressiveAsWhoop() {
+        let ride = Strain.load(forStrain: 12.6), hike = Strain.load(forStrain: 4.1)
+        let day = Strain.fromLoad(ride + hike)
+        XCTAssertGreaterThan(day, 12.6)
+        XCTAssertLessThanOrEqual(day, 12.8)
+        // What is left of the day's 12,8 after both workouts is small but positive.
+        XCTAssertGreaterThan(Strain.load(forStrain: 12.8) - ride - hike, 0)
+    }
+
+    func testZonesFollowHeartRateReserve() {
+        // RHR 50, HRmax 190: zone 1 starts at 120, zone 5 at 176.
+        XCTAssertEqual(Strain.zone(119, rest: 50, maxHR: 190), 0)
+        XCTAssertEqual(Strain.zone(120, rest: 50, maxHR: 190), 1)
+        XCTAssertEqual(Strain.zone(150, rest: 50, maxHR: 190), 3)
+        XCTAssertEqual(Strain.zone(176, rest: 50, maxHR: 190), 5)
+        XCTAssertEqual(Strain.zoneFloor(1, rest: 50, maxHR: 190), 120, accuracy: 0.001)
     }
 
     func testRecoveryLogisticCentre() {
@@ -178,20 +201,21 @@ final class LiveMixTests: XCTestCase {
 
     func testStrainInverseRoundTrip() {
         for strain in [0.5, 4.0, 9.3, 13.5, 17.2, 20.5] {
-            let net = Strain.netTrimp(forStrain: strain)
-            XCTAssertEqual(Strain.fromNetTrimp(net), strain, accuracy: 0.0001)
+            let load = Strain.load(forStrain: strain)
+            XCTAssertEqual(Strain.fromLoad(load), strain, accuracy: 0.0001)
         }
         // Adding a session's load can only raise the day's strain, and never above 21.
-        let day = Strain.netTrimp(forStrain: 7.1)
-        XCTAssertGreaterThan(Strain.fromNetTrimp(day + 40), 7.1)
-        XCTAssertLessThanOrEqual(Strain.fromNetTrimp(day + 10_000), 21)
+        let day = Strain.load(forStrain: 7.1)
+        XCTAssertGreaterThan(Strain.fromLoad(day + 40), 7.1)
+        XCTAssertLessThanOrEqual(Strain.fromLoad(day + 100_000), 21)
     }
 
     func testOptimalStrainTarget() {
         XCTAssertNil(StrainTarget.optimal(for: nil))
-        XCTAssertEqual(StrainTarget.optimal(for: 45)!, 10.5, accuracy: 0.05)
-        XCTAssertEqual(StrainTarget.optimal(for: 34)!, 9.0, accuracy: 0.05)
-        XCTAssertEqual(StrainTarget.optimal(for: 10)!, 5.5, accuracy: 0.2)
+        // WHOOP showed 10,8 as the target on a 45 % recovery day.
+        XCTAssertEqual(StrainTarget.optimal(for: 45)!, 10.8, accuracy: 0.05)
+        XCTAssertEqual(StrainTarget.optimal(for: 34)!, 9.4, accuracy: 0.05)
+        XCTAssertEqual(StrainTarget.optimal(for: 10)!, 6.3, accuracy: 0.05)
         XCTAssertTrue(StrainTarget.forRecovery(90)!.contains(StrainTarget.optimal(for: 90)!))
     }
 

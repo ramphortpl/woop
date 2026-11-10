@@ -70,9 +70,10 @@ final class LiveWorkout: NSObject, ObservableObject {
         self.profile = profile
         restHR = day?.restingHRUsed ?? day?.rhr ?? 60
         maxHRUsed = day?.maxHRUsed ?? Double(profile.maxHROverride ?? Int(profile.tanakaMaxHR))
-        acc = Strain.Accumulator(rest: restHR, maxHR: maxHRUsed, quietHRR: day?.quietHRR ?? Strain.defaultQuietHRR,
-                                 female: profile.sex == .female)
-        dayNetAtStart = Strain.netTrimp(forStrain: day?.strain ?? 0)
+        denominator = AppState.shared.calibration?.strainDenominator ?? Strain.defaultDenominator
+        kcalScale = AppState.shared.calibration?.kcalActiveScale ?? 1
+        acc = Strain.Accumulator(rest: restHR, maxHR: maxHRUsed, denominator: denominator)
+        dayNetAtStart = Strain.load(forStrain: day?.strain ?? 0, denominator: denominator)
         dayStrain = day?.strain
         strain = 0
         calories = 0
@@ -126,14 +127,15 @@ final class LiveWorkout: NSObject, ObservableObject {
         let hr = Double(bpm)
         a.add(hr, weight: dt / 60)
         acc = a
-        strain = Strain.fromNetTrimp(a.net)
-        dayStrain = Strain.fromNetTrimp(dayNetAtStart + a.net)
-        calories += Strain.kcalForMinute(hr: hr, asleep: false, rest: restHR, maxHR: maxHRUsed, profile: profile).total * dt / 60
+        strain = a.strain
+        dayStrain = Strain.fromLoad(dayNetAtStart + a.load, denominator: denominator)
+        calories += Strain.kcalForMinute(hr: hr, asleep: false, rest: restHR, maxHR: maxHRUsed, profile: profile,
+                                         activeScale: kcalScale).total * dt / 60
         hrSum += hr * dt
         hrWeight += dt
         avgHR = hrSum / max(1, hrWeight)
         maxHR = max(maxHR ?? 0, bpm)
-        zone = Strain.zone(hr, maxHR: maxHRUsed)
+        zone = Strain.zone(hr, rest: restHR, maxHR: maxHRUsed)
     }
 
     var maxHRForZones: Double { maxHRUsed }

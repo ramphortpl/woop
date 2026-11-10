@@ -76,12 +76,25 @@ struct SleepSession: Codable, Equatable, Sendable, Identifiable {
     var spo2: Double?
     var skinTemp: Double?
     var avgHR: Double?
-    /// true when the night was found from the band's own sleep state, false for motion/HR fallback.
+    /// true when the night was found from motion (or imported), false for the heart-rate-only fallback.
     var bandDetected: Bool = true
+    /// Seconds inside the window that were not observed (no sample, or no heart rate nearby):
+    /// they count as neither asleep nor awake.
+    var unobservedSec: Int?
+    /// 5-minute windows behind the HRV figure (0 = pooled over the night).
+    var hrvWindows: Int?
+    /// Lag-1 autocorrelation of the beat-to-beat differences (≈ 0 clean, −0.5 pure timing noise).
+    var hrvNoise: Double?
+    /// Share of the time asleep spent with a markedly raised heart rate, 0–100.
+    var highStressPct: Double?
 
     var asleepSec: Int { lightSec + deepSec + remSec }
     var inBedSec: Int { max(0, end - start) }
-    var efficiency: Double { inBedSec > 0 ? Double(asleepSec) / Double(inBedSec) : 0 }
+    /// Asleep ÷ observed time in bed.
+    var efficiency: Double {
+        let observed = inBedSec - (unobservedSec ?? 0)
+        return observed > 0 ? min(1, Double(asleepSec) / Double(observed)) : 0
+    }
     var restorativeSec: Int { deepSec + remSec }
     var restorativeFraction: Double { asleepSec > 0 ? Double(restorativeSec) / Double(asleepSec) : 0 }
 }
@@ -118,7 +131,7 @@ struct ActivityRecord: Codable, Equatable, Sendable, Identifiable {
 
 /// Everything shown for one day ("cycle" in WHOOP terms: from the night's sleep to the next).
 struct DayMetrics: Codable, Equatable, Sendable {
-    static let algoVersion = 3
+    static let algoVersion = 4
 
     var date: String
     var algoVersion: Int = DayMetrics.algoVersion
@@ -132,7 +145,10 @@ struct DayMetrics: Codable, Equatable, Sendable {
     var sleep: SleepSession?
     var naps: [SleepSession] = []
     var sleepNeedSec: Double?
+    /// WHOOP's composite sleep score ("Votre sommeil"), 0–100.
     var sleepPerformance: Double?
+    /// Hours slept against the need, 0–100 (one of the four parts of the sleep score).
+    var sleepHoursVsNeed: Double?
     var sleepConsistency: Double?
     var sleepDebtSec: Double?
     /// Need for the coming night (shown as "Heures de sommeil nécessaires").
@@ -148,6 +164,12 @@ struct DayMetrics: Codable, Equatable, Sendable {
     var spo2: Double?
     var skinTemp: Double?
     var skinTempDev: Double?
+    /// The night's values exactly as measured, before any personal WHOOP calibration.
+    var hrvRaw: Double?
+    var rhrRaw: Double?
+    var respRaw: Double?
+    /// True when the recovery came from the model fitted on the wearer's WHOOP export.
+    var recoveryCalibrated: Bool?
 
     // Strain
     var strain: Double?
@@ -168,6 +190,9 @@ struct DayMetrics: Codable, Equatable, Sendable {
 
     // Coverage
     var wornMinutes: Int = 0
+    /// Minutes of the cycle with any strap data, and the cycle's length in minutes.
+    var dataMinutes: Int?
+    var cycleMinutes: Int?
     /// 5-minute mean HR over the cycle (0 = no data), for the day chart.
     var hrTrace: [Int] = []
     var hrTraceStart: Int?

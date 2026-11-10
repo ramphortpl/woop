@@ -264,6 +264,7 @@ struct DataSettingsView: View {
             Button("Supprimer", role: .destructive) {
                 Database.shared.wipeAll()
                 app.loadStored()
+                app.refitCalibration()
                 refresh()
             }
             Button("Annuler", role: .cancel) {}
