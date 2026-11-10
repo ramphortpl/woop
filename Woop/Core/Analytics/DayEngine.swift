@@ -125,16 +125,13 @@ enum DayEngine {
             guard g.asleepMin >= 15, g.end - g.start <= 6 * 3600 else { continue }
             naps.append(buildSession(g, staged: stagedRuns, window: window, series: series, nap: true))
         }
-        var taken: [(start: Int, end: Int)] = groups.map { ($0.start, $0.end) }
+        let taken: [(start: Int, end: Int)] = groups.map { ($0.start, $0.end) }
         for n in NapDetector.detect(window, taken: taken, mainEnd: mainEnd, wristOff: wristOff)
         where n.end > max(dayStart, mainEnd ?? dayStart) && n.end <= nextStart {
             let g = NightGroup(runs: [SleepRun(start: n.start, end: n.end)])
             let st = SleepStager.stage(samples: samples, start: n.start, end: n.end, priors: cal?.stageShares)
             let session = buildSession(g, staged: [n.start: st], window: window, series: series, nap: true)
-            if session.asleepSec >= 15 * 60 {
-                naps.append(session)
-                taken.append((n.start, n.end))
-            }
+            if session.asleepSec >= 15 * 60 { naps.append(session) }
         }
         naps.sort { $0.start < $1.start }
         out.sleep = sleep

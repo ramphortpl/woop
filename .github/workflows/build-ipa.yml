@@ -114,7 +114,9 @@ jobs:
             if [ -d "$XC" ]; then sudo xcode-select -s "$XC"; break; fi
           done
       - name: swift test
-        run: swift test 2>&1 | tail -30
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tail -40
 
   screenshots:
     # Renders the app in the iOS Simulator (demo data) and publishes PNGs to the rolling
